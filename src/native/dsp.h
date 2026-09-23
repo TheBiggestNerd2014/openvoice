@@ -31,14 +31,14 @@ public:
   float process(float x);
 
 private:
-  static constexpr int kGrain = 1024;
+  static constexpr int kGrain = 2048;
   std::vector<float> delay_;
-  std::vector<float> window_;
   int writePos_ = 0;
-  float grainA_ = 0;
-  float grainB_ = 0;
+  float behind_ = 0;
   float ratio_ = 1.f;
   int sampleRate_ = 48000;
+
+  float readAt(float behind) const;
 };
 
 class OnePoleHighpass {
@@ -67,16 +67,13 @@ private:
   bool detectPitch(float* f0, float* confidence);
   int quantizeMidi(float f0) const;
   void commitRoot(int midi);
-  void applyRegister(int rootMidi, int thirdSemis, int fifthSemis, float* f0, float* f3, float* f5) const;
-  float osc(float phase) const;
 
   Key key_{};
-  OscType oscType_ = OscType::Triangle;
   int sampleRate_ = 48000;
-  int hop_ = 512;
-  int yinSize_ = 2048;
+  int hop_ = 768;
+  int yinSize_ = 1024;
   float holdMs_ = 90.f;
-  float harmonyGain_ = 0.18f;
+  float harmonyGain_ = 1.f;
 
   std::vector<float> yinBuf_;
   std::vector<float> yinDiff_;
@@ -87,9 +84,9 @@ private:
   int proposedStableHops_ = 0;
   int activeRoot_ = -1;
 
-  float targetFreq_[3] = {261.63f, 329.63f, 392.f};
-  float currentFreq_[3] = {261.63f, 329.63f, 392.f};
-  float phase_[3] = {0, 0, 0};
+  float targetSemis_[3] = {0.f, 4.f, 7.f};
+  float currentSemis_[3] = {0.f, 4.f, 7.f};
+  PitchShifter voices_[3];
   float env_ = 0;
   bool voiced_ = false;
 };
@@ -113,5 +110,5 @@ private:
   int sampleRate_ = 48000;
   float robotPhase_ = 0;
   float pitchSemis_ = 0.f;
-  float squeakSemis_ = 10.f;
+  float squeakSemis_ = 8.f;
 };

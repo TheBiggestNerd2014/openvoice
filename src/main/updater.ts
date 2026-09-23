@@ -55,7 +55,14 @@ export function startAutoUpdater(): void {
     })
   })
   autoUpdater.on('error', (err) => {
-    setStatus({ state: 'error', message: err.message })
+    const raw = err.message ?? 'Update check failed'
+    const missingRelease = /404|releases\.atom|ENOTFOUND|ETIMEDOUT|ECONN/i.test(raw)
+    setStatus({
+      state: missingRelease ? 'idle' : 'error',
+      message: missingRelease
+        ? 'No public release yet. Updates start once the GitHub repo is public and a full release is published.'
+        : raw.split('\n')[0]
+    })
   })
 
   if (!app.isPackaged) {
@@ -65,7 +72,14 @@ export function startAutoUpdater(): void {
 
   const poll = (): void => {
     autoUpdater.checkForUpdates().catch((err: Error) => {
-      setStatus({ state: 'error', message: err.message })
+      const raw = err.message ?? 'Update check failed'
+      const missingRelease = /404|releases\.atom|ENOTFOUND|ETIMEDOUT|ECONN/i.test(raw)
+      setStatus({
+        state: missingRelease ? 'idle' : 'error',
+        message: missingRelease
+          ? 'No public release yet. Updates start once the GitHub repo is public and a full release is published.'
+          : raw.split('\n')[0]
+      })
     })
   }
 

@@ -13,9 +13,12 @@ export function loadSettings(): AppSettings {
       return defaults
     }
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as Partial<AppSettings>
+    const harmonyGain =
+      typeof parsed.harmonyGain === 'number' && parsed.harmonyGain > 0.25 ? parsed.harmonyGain : defaults.harmonyGain
     return {
       ...defaults,
       ...parsed,
+      harmonyGain,
       pads: Array.isArray(parsed.pads) ? (parsed.pads as PadBinding[]) : []
     }
   } catch {

@@ -8,10 +8,6 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-static float midiToHz(float midi) {
-  return 440.f * std::pow(2.f, (midi - 69.f) / 12.f);
-}
-
 int Key::snapPitchClass(int pc) const {
   pc = ((pc % 12) + 12) % 12;
   int best = scale[0];
@@ -49,11 +45,7 @@ void Key::triadIntervals(int rootPc, int* thirdSemis, int* fifthSemis) const {
 
 void PitchShifter::setup(int sampleRate) {
   sampleRate_ = sampleRate;
-  delay_.assign(kGrain * 4, 0.f);
-  window_.resize(kGrain);
-  for (int i = 0; i < kGrain; ++i) {
-    window_[i] = 0.5f * (1.f - std::cos(2.f * static_cast<float>(M_PI) * i / (kGrain - 1)));
-  }
+  delay_.assign(kGrain * 2, 0.f);
   reset();
 }
 
@@ -64,43 +56,47 @@ void PitchShifter::setSemitones(float semitones) {
 void PitchShifter::reset() {
   std::fill(delay_.begin(), delay_.end(), 0.f);
   writePos_ = 0;
-  grainA_ = 0;
-  grainB_ = static_cast<float>(kGrain / 2);
+  behind_ = static_cast<float>(kGrain) * 0.5f;
+}
+
+float PitchShifter::readAt(float behind) const {
+  const int n = static_cast<int>(delay_.size());
+  float b = behind;
+  while (b < 0.f) {
+    b += static_cast<float>(kGrain);
+  }
+  while (b >= static_cast<float>(kGrain)) {
+    b -= static_cast<float>(kGrain);
+  }
+
+  float pos = static_cast<float>(writePos_) - b;
+  while (pos < 0.f) {
+    pos += static_cast<float>(n);
+  }
+  const int i0 = static_cast<int>(pos) % n;
+  const int i1 = (i0 + 1) % n;
+  const float frac = pos - std::floor(pos);
+  const float sample = delay_[i0] + (delay_[i1] - delay_[i0]) * frac;
+  const float phase = b / static_cast<float>(kGrain);
+  const float window = 0.5f * (1.f - std::cos(2.f * static_cast<float>(M_PI) * phase));
+  return sample * window;
 }
 
 float PitchShifter::process(float x) {
   const int n = static_cast<int>(delay_.size());
   delay_[writePos_] = x;
 
-  auto grain = [&](float phase) {
-    if (phase < 0.f) {
-      phase += static_cast<float>(kGrain);
-    }
-    const float read = static_cast<float>(writePos_ - kGrain) + phase;
-    float idx = read;
-    while (idx < 0.f) {
-      idx += static_cast<float>(n);
-    }
-    const int i0 = static_cast<int>(idx) % n;
-    const int i1 = (i0 + 1) % n;
-    const float frac = idx - std::floor(idx);
-    const float s = delay_[i0] + (delay_[i1] - delay_[i0]) * frac;
-    const int w = std::clamp(static_cast<int>(phase), 0, kGrain - 1);
-    return s * window_[w];
-  };
+  const float out = readAt(behind_) + readAt(behind_ + static_cast<float>(kGrain) * 0.5f);
 
-  const float out = grain(grainA_) + grain(grainB_);
-  grainA_ += ratio_;
-  grainB_ += ratio_;
-  if (grainA_ >= kGrain) {
-    grainA_ -= static_cast<float>(kGrain);
-  }
-  if (grainB_ >= kGrain) {
-    grainB_ -= static_cast<float>(kGrain);
+  behind_ += 1.f - ratio_;
+  if (behind_ >= static_cast<float>(kGrain)) {
+    behind_ -= static_cast<float>(kGrain);
+  } else if (behind_ < 0.f) {
+    behind_ += static_cast<float>(kGrain);
   }
 
   writePos_ = (writePos_ + 1) % n;
-  return out * 0.7f;
+  return out;
 }
 
 void OnePoleHighpass::setup(int sampleRate, float hz) {
@@ -119,11 +115,14 @@ float OnePoleHighpass::process(float x) {
 
 void AutoChords::setup(int sampleRate) {
   sampleRate_ = sampleRate;
-  hop_ = 1024;
-  yinSize_ = 2048;
+  hop_ = 768;
+  yinSize_ = 1024;
   yinBuf_.assign(yinSize_, 0.f);
   yinDiff_.assign(yinSize_ / 2, 0.f);
   yinCmnd_.assign(yinSize_ / 2, 1.f);
+  for (auto& voice : voices_) {
+    voice.setup(sampleRate);
+  }
   reset();
 }
 
@@ -136,11 +135,11 @@ void AutoChords::setHoldMs(float ms) {
 }
 
 void AutoChords::setHarmonyGain(float gain) {
-  harmonyGain_ = std::clamp(gain, 0.f, 1.f);
+  harmonyGain_ = std::clamp(gain, 0.f, 2.f);
 }
 
 void AutoChords::setOscType(OscType type) {
-  oscType_ = type;
+  (void)type;
 }
 
 void AutoChords::reset() {
@@ -152,8 +151,8 @@ void AutoChords::reset() {
   env_ = 0;
   voiced_ = false;
   for (int i = 0; i < 3; ++i) {
-    phase_[i] = 0;
-    currentFreq_[i] = targetFreq_[i];
+    currentSemis_[i] = targetSemis_[i];
+    voices_[i].reset();
   }
 }
 
@@ -165,13 +164,16 @@ bool AutoChords::detectPitch(float* f0, float* confidence) {
 
   float* diff = yinDiff_.data();
   float* cmnd = yinCmnd_.data();
-  for (int tau = 1; tau < maxTau; ++tau) {
+  for (int tau = 1; tau < maxTau; tau += 2) {
     float sum = 0;
-    for (int j = 0; j < n - tau; ++j) {
+    for (int j = 0; j < n - tau; j += 2) {
       const float d = yinBuf_[j] - yinBuf_[j + tau];
       sum += d * d;
     }
-    diff[tau] = sum;
+    diff[tau] = sum * 2.f;
+    if (tau + 1 < maxTau) {
+      diff[tau + 1] = sum * 2.f;
+    }
   }
 
   float running = 0;
@@ -234,27 +236,27 @@ int AutoChords::quantizeMidi(float f0) const {
   return octave * 12 + pc;
 }
 
-void AutoChords::applyRegister(int rootMidi, int thirdSemis, int fifthSemis, float* f0, float* f3, float* f5) const {
-  while (rootMidi < 48) {
-    rootMidi += 12;
-  }
-  while (rootMidi + fifthSemis > 84) {
-    rootMidi -= 12;
-  }
-  if (rootMidi < 48) {
-    rootMidi += 12;
-  }
-  *f0 = midiToHz(static_cast<float>(rootMidi));
-  *f3 = midiToHz(static_cast<float>(rootMidi + thirdSemis));
-  *f5 = midiToHz(static_cast<float>(rootMidi + fifthSemis));
-}
-
 void AutoChords::commitRoot(int midi) {
   activeRoot_ = midi;
   int third = 4;
   int fifth = 7;
   key_.triadIntervals(midi, &third, &fifth);
-  applyRegister(midi, third, fifth, &targetFreq_[0], &targetFreq_[1], &targetFreq_[2]);
+
+  int placed = midi;
+  while (placed < 48) {
+    placed += 12;
+  }
+  while (placed + fifth > 84) {
+    placed -= 12;
+  }
+  if (placed < 48) {
+    placed += 12;
+  }
+
+  const int rootShift = placed - midi;
+  targetSemis_[0] = static_cast<float>(rootShift);
+  targetSemis_[1] = static_cast<float>(rootShift + third);
+  targetSemis_[2] = static_cast<float>(rootShift + fifth);
 }
 
 void AutoChords::analyzeIfReady() {
@@ -297,44 +299,30 @@ void AutoChords::analyzeIfReady() {
   yinFill_ = keep;
 }
 
-float AutoChords::osc(float phase) const {
-  if (oscType_ == OscType::Sine) {
-    return std::sin(2.f * static_cast<float>(M_PI) * phase);
-  }
-  const float t = phase - std::floor(phase);
-  return 4.f * std::fabs(t - 0.5f) - 1.f;
-}
-
 float AutoChords::process(float voiceSample) {
   if (yinFill_ < yinSize_) {
     yinBuf_[yinFill_++] = voiceSample;
-  } else {
-    yinBuf_[yinSize_ - 1] = voiceSample;
   }
   analyzeIfReady();
 
   const float envTarget = (voiced_ && activeRoot_ >= 0) ? 1.f : 0.f;
-  const float envCoeff = envTarget > env_ ? 0.0025f : 0.0009f;
+  const float envCoeff = envTarget > env_ ? 0.004f : 0.0012f;
   env_ += (envTarget - env_) * envCoeff;
 
-  const float glide = 1.f - std::exp(-1.f / (0.035f * static_cast<float>(sampleRate_)));
-  float harmony = 0;
+  const float glide = 1.f - std::exp(-1.f / (0.04f * static_cast<float>(sampleRate_)));
+  float chord = 0.f;
   for (int i = 0; i < 3; ++i) {
-    currentFreq_[i] += (targetFreq_[i] - currentFreq_[i]) * glide;
-    phase_[i] += currentFreq_[i] / static_cast<float>(sampleRate_);
-    if (phase_[i] >= 1.f) {
-      phase_[i] -= std::floor(phase_[i]);
-    }
-    harmony += osc(phase_[i]);
+    currentSemis_[i] += (targetSemis_[i] - currentSemis_[i]) * glide;
+    voices_[i].setSemitones(currentSemis_[i]);
+    chord += voices_[i].process(voiceSample);
   }
-  harmony *= (1.f / 3.f) * harmonyGain_ * env_;
-  return voiceSample + harmony;
+  return chord * (0.55f * harmonyGain_ * env_);
 }
 
 void VoiceProcessor::setup(int sampleRate) {
   sampleRate_ = sampleRate;
   shifter_.setup(sampleRate);
-  squeakHp_.setup(sampleRate, 350.f);
+  squeakHp_.setup(sampleRate, 180.f);
   chords_.setup(sampleRate);
   chords_.setKey(Key{});
   reset();
@@ -380,14 +368,13 @@ float VoiceProcessor::process(float x) {
       return squeakHp_.process(shifter_.process(x));
     }
     case VoiceMode::Robot: {
-      robotPhase_ += 35.f / static_cast<float>(sampleRate_);
+      robotPhase_ += 72.f / static_cast<float>(sampleRate_);
       if (robotPhase_ >= 1.f) {
         robotPhase_ -= 1.f;
       }
       const float carrier = std::sin(2.f * static_cast<float>(M_PI) * robotPhase_);
-      const float ring = x * carrier;
-      const float flatten = std::tanh(x * 4.f) * 0.25f;
-      return ring * 0.85f + flatten;
+      const float buzz = x * (0.62f + 0.38f * carrier);
+      return std::round(buzz * 18.f) / 18.f;
     }
     case VoiceMode::Chords:
       return chords_.process(x);

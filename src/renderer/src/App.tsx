@@ -286,11 +286,11 @@ export function App() {
         {settings.voiceMode === 'chords' ? (
           <div className="row" style={{ marginTop: 12 }}>
             <label className="field grow">
-              Harmony gain ({Math.round(settings.harmonyGain * 100)}%)
+              Chord level ({Math.round(settings.harmonyGain * 100)}%)
               <input
                 type="range"
                 min={0}
-                max={0.6}
+                max={1.5}
                 step={0.01}
                 value={settings.harmonyGain}
                 onChange={(e) => void patchSettings({ harmonyGain: Number(e.target.value) })}

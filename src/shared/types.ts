@@ -62,7 +62,7 @@ export const defaultSettings = (): AppSettings => ({
   inputGain: 1,
   outputGain: 1,
   padGain: 1,
-  harmonyGain: 0.18,
+  harmonyGain: 1,
   chordHoldMs: 90,
   pads: []
 })
