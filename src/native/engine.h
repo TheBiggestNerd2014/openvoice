@@ -120,6 +120,22 @@ private:
   Ring monitorRing_{};
   VoiceProcessor voice_{};
 
+  std::vector<float> outHist_;
+  std::vector<float> micHist_;
+  int outWrite_ = 0;
+  int bestLag_ = 1440;
+  float echoCorr_ = 0.f;
+  float echoPower_ = 0.f;
+  float micPower_ = 0.f;
+  float duck_ = 1.f;
+  float gateEnv_ = 0.f;
+  float hpX_ = 0.f;
+  float hpY_ = 0.f;
+
+  float suppressFeedback(float mic);
+  void rememberOutput(float sample);
+  void updateFeedbackLag();
+
   std::atomic<bool> running_{false};
   std::atomic<bool> voiceOn_{false};
   std::atomic<bool> monitorOn_{false};

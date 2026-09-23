@@ -297,6 +297,17 @@ bool Engine::start(const std::string& inputId, const std::string& cableId, const
   cableRing_.setup(8192);
   monitorRing_.setup(8192);
   voice_.setup(kSampleRate);
+  outHist_.assign(static_cast<size_t>(kSampleRate) / 10, 0.f);
+  micHist_.assign(static_cast<size_t>(kSampleRate) / 10, 0.f);
+  outWrite_ = 0;
+  bestLag_ = kSampleRate / 40;
+  echoCorr_ = 0.f;
+  echoPower_ = 0.f;
+  micPower_ = 0.f;
+  duck_ = 1.f;
+  gateEnv_ = 0.f;
+  hpX_ = 0.f;
+  hpY_ = 0.f;
 
   auto* capture = new ma_device();
   ma_device_config cap = ma_device_config_init(ma_device_type_capture);
@@ -516,6 +527,101 @@ void Engine::stopPad(int id) {
   pads_[id].playPos.store(-1);
 }
 
+float Engine::suppressFeedback(float mic) {
+  const float hp = 0.982f * (hpY_ + mic - hpX_);
+  hpX_ = mic;
+  hpY_ = hp;
+  mic = hp;
+  if (!micHist_.empty()) {
+    micHist_[static_cast<size_t>(outWrite_)] = mic;
+  }
+
+  const float absMic = std::fabs(mic);
+  const float gateTarget = absMic > 0.04f ? 1.f : (absMic < 0.016f ? 0.f : gateEnv_);
+  gateEnv_ += (gateTarget - gateEnv_) * (gateTarget > gateEnv_ ? 0.12f : 0.008f);
+
+  if (!outHist_.empty()) {
+    const int n = static_cast<int>(outHist_.size());
+    int idx = outWrite_ - bestLag_;
+    if (idx < 0) {
+      idx += n;
+    }
+    const float delayed = outHist_[static_cast<size_t>(idx)];
+    echoCorr_ = 0.992f * echoCorr_ + 0.008f * mic * delayed;
+    echoPower_ = 0.992f * echoPower_ + 0.008f * delayed * delayed;
+    micPower_ = 0.992f * micPower_ + 0.008f * mic * mic;
+
+    if (echoPower_ > 1e-6f) {
+      const float gain = std::clamp(echoCorr_ / echoPower_, -1.2f, 1.2f);
+      mic -= gain * delayed;
+    }
+
+    float coherence = 0.f;
+    const float denom = micPower_ * echoPower_;
+    if (denom > 1e-8f) {
+      coherence = std::fabs(echoCorr_) / std::sqrt(denom);
+    }
+    float duckTarget = 1.f;
+    if (coherence > 0.82f && echoPower_ > 0.0008f) {
+      duckTarget = 0.05f;
+    } else if (coherence > 0.62f && echoPower_ > 0.0004f) {
+      duckTarget = 0.28f;
+    }
+    const float coeff = duckTarget < duck_ ? 0.035f : 0.0015f;
+    duck_ += (duckTarget - duck_) * coeff;
+    mic *= duck_;
+  }
+
+  return mic * gateEnv_;
+}
+
+void Engine::rememberOutput(float sample) {
+  if (outHist_.empty()) {
+    return;
+  }
+  outHist_[static_cast<size_t>(outWrite_)] = sample;
+  const int n = static_cast<int>(outHist_.size());
+  outWrite_ = (outWrite_ + 1) % n;
+}
+
+void Engine::updateFeedbackLag() {
+  const int n = static_cast<int>(outHist_.empty() ? 0 : outHist_.size());
+  if (n < 64) {
+    return;
+  }
+  static const int kLags[] = {960, 1200, 1440, 1920, 2400, 2880, 3600, 4320};
+  float best = 0.f;
+  int bestLag = bestLag_;
+  for (int lag : kLags) {
+    if (lag >= n || micHist_.size() != outHist_.size()) {
+      continue;
+    }
+    float dot = 0.f;
+    float micE = 0.f;
+    float outE = 0.f;
+    for (int i = 0; i < 64; ++i) {
+      int a = outWrite_ - 1 - i;
+      int b = a - lag;
+      while (a < 0) a += n;
+      while (b < 0) b += n;
+      const float m = micHist_[static_cast<size_t>(a)];
+      const float o = outHist_[static_cast<size_t>(b)];
+      dot += m * o;
+      micE += m * m;
+      outE += o * o;
+    }
+    const float denom = micE * outE;
+    const float score = denom > 1e-8f ? std::fabs(dot) / std::sqrt(denom) : 0.f;
+    if (score > best) {
+      best = score;
+      bestLag = lag;
+    }
+  }
+  if (best > 0.35f) {
+    bestLag_ = bestLag;
+  }
+}
+
 void Engine::onCapture(const float* input, unsigned frameCount, unsigned channels) {
   if (!input) {
     return;
@@ -528,16 +634,11 @@ void Engine::onCapture(const float* input, unsigned frameCount, unsigned channel
   const float inG = inputGain_.load();
   const float outG = outputGain_.load();
   const float padG = padGain_.load();
-  static float gateEnv = 0.f;
 
   for (unsigned i = 0; i < frameCount; ++i) {
     float mic = mixMono(input + i * channels, channels) * inG;
     inPeak = std::max(inPeak, std::fabs(mic));
-
-    const float absMic = std::fabs(mic);
-    const float gateTarget = absMic > 0.03f ? 1.f : (absMic < 0.012f ? 0.f : gateEnv);
-    gateEnv += (gateTarget - gateEnv) * (gateTarget > gateEnv ? 0.08f : 0.015f);
-    mic *= gateEnv;
+    mic = suppressFeedback(mic);
 
     float voice = 0.f;
     if (voiceOn) {
@@ -557,12 +658,19 @@ void Engine::onCapture(const float* input, unsigned frameCount, unsigned channel
     }
 
     float mix = (voice + pads * padG) * outG;
-    mix = std::clamp(mix, -1.f, 1.f);
+    const float a = std::fabs(mix);
+    if (a > 0.55f) {
+      const float soft = 0.55f + (1.f - std::exp(-(a - 0.55f) * 3.f)) * 0.35f;
+      mix = std::copysign(std::min(soft, 0.92f), mix);
+    }
     outPeak = std::max(outPeak, std::fabs(mix));
 
+    rememberOutput(mix);
     cableRing_.writeSample(mix);
     monitorRing_.writeSample(monitorOn ? mix : 0.f);
   }
+
+  updateFeedbackLag();
 
   inMeter_.store(inPeak);
   outMeter_.store(outPeak);
