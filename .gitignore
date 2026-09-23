@@ -1,0 +1,14 @@
+node_modules/
+out/
+dist/
+/build/
+*.node
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+resources/vbcable/*.exe
+resources/vbcable/*.zip
+sounds/*
+!sounds/README.md

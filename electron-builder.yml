@@ -1,0 +1,53 @@
+appId: com.openvoice.app
+productName: OpenVoice
+copyright: Copyright © OpenVoice
+directories:
+  output: dist
+  buildResources: resources/build
+files:
+  - out/**/*
+  - package.json
+  - build/Release/*.node
+  - resources/build/icon.png
+asar: true
+asarUnpack:
+  - build/Release/*.node
+extraResources:
+  - from: build/Release
+    to: native
+    filter:
+      - '*.node'
+  - from: resources/vbcable
+    to: vbcable
+    filter:
+      - '**/*'
+      - '!README.md'
+  - from: sounds
+    to: sounds
+    filter:
+      - '**/*'
+      - '!README.md'
+win:
+  icon: resources/build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-Setup-${version}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: OpenVoice
+  installerIcon: resources/build/icon.ico
+  uninstallerIcon: resources/build/icon.ico
+  installerHeaderIcon: resources/build/icon.ico
+publish:
+  provider: github
+  owner: thebiggestnerd2014
+  repo: openvoice
+  releaseType: release
+npmRebuild: false
+electronDownload:
+  arch: x64
