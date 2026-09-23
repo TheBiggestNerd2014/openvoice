@@ -1,6 +1,10 @@
+import { createRequire } from 'node:module'
 import { app } from 'electron'
-import { autoUpdater } from 'electron-updater'
 import type { UpdateStatus } from '../shared/types'
+import type { AppUpdater } from 'electron-updater'
+
+const require = createRequire(import.meta.url)
+const { autoUpdater } = require('electron-updater') as { autoUpdater: AppUpdater }
 
 let status: UpdateStatus = { state: 'idle' }
 const listeners = new Set<(next: UpdateStatus) => void>()
