@@ -165,6 +165,8 @@ void AutoChords::reset() {
   hangSamples_ = 0;
   histPos_ = 0;
   histCount_ = 0;
+  anchorMidi_ = 60.f;
+  unvoicedHops_ = 0;
   env_ = 0;
   voiced_ = false;
   for (int i = 0; i < 3; ++i) {
@@ -260,6 +262,26 @@ int AutoChords::quantizeFromMidi(float midi) const {
   return static_cast<int>(std::lround(best));
 }
 
+int AutoChords::pickRandomRoot(float midi) {
+  rngState_ = rngState_ * 1664525u + 1013904223u;
+  if (rngState_ == 0) {
+    rngState_ = 1;
+  }
+  const int pc = key_.scale[static_cast<int>(rngState_ % 7u)];
+  const int baseOct = static_cast<int>(std::floor(midi / 12.f));
+  int best = pc + baseOct * 12;
+  float bestDist = 100.f;
+  for (int oct = baseOct - 1; oct <= baseOct + 1; ++oct) {
+    const int cand = pc + oct * 12;
+    const float dist = std::fabs(static_cast<float>(cand) - midi);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = cand;
+    }
+  }
+  return std::clamp(best, 36, 84);
+}
+
 void AutoChords::retarget() {
   if (!haveMidi_ || activeRoot_ < 0) {
     return;
@@ -307,20 +329,47 @@ void AutoChords::analyzeIfReady() {
     smoothedMidi_ = sorted[histCount_ / 2];
     haveMidi_ = true;
 
-    const int midi = quantizeFromMidi(smoothedMidi_);
-    if (midi == proposedMidi_) {
-      ++proposedStableHops_;
+    unvoicedHops_ = 0;
+    // A small wobble must not retune the chord. A real rise or fall steps
+    // to the next legitimate triad in that direction.
+    constexpr float kDeadzone = 2.f;
+    if (activeRoot_ < 0) {
+      commitRoot(pickRandomRoot(smoothedMidi_));
+      anchorMidi_ = smoothedMidi_;
+      proposedMidi_ = activeRoot_;
+      proposedStableHops_ = 0;
     } else {
-      proposedMidi_ = midi;
-      proposedStableHops_ = 1;
-    }
-
-    const float hopSec = static_cast<float>(hop_) / static_cast<float>(sampleRate_);
-    const int need = std::max(1, static_cast<int>(std::ceil((holdMs_ / 1000.f) / hopSec)));
-    if (activeRoot_ < 0 || (midi != activeRoot_ && proposedStableHops_ >= need)) {
-      commitRoot(midi);
-    } else {
+      const float delta = smoothedMidi_ - anchorMidi_;
+      if (std::fabs(delta) >= kDeadzone) {
+        const int snapped = quantizeFromMidi(static_cast<float>(activeRoot_) + delta);
+        const bool sameWay = (delta > 0.f && snapped > activeRoot_) || (delta < 0.f && snapped < activeRoot_);
+        if (sameWay) {
+          if (snapped == proposedMidi_) {
+            ++proposedStableHops_;
+          } else {
+            proposedMidi_ = snapped;
+            proposedStableHops_ = 1;
+          }
+          const float hopSec = static_cast<float>(hop_) / static_cast<float>(sampleRate_);
+          const int need = std::max(1, static_cast<int>(std::ceil((holdMs_ / 1000.f) / hopSec)));
+          if (proposedStableHops_ >= need) {
+            commitRoot(snapped);
+            anchorMidi_ = smoothedMidi_;
+          }
+        }
+      } else {
+        proposedMidi_ = activeRoot_;
+        proposedStableHops_ = 0;
+      }
       retarget();
+    }
+  } else {
+    ++unvoicedHops_;
+    const int reRoll = std::max(1, sampleRate_ / std::max(hop_, 1) / 4);
+    if (unvoicedHops_ > reRoll) {
+      activeRoot_ = -1;
+      proposedMidi_ = -1;
+      proposedStableHops_ = 0;
     }
   }
 
@@ -395,6 +444,8 @@ void VoiceProcessor::reset() {
   shifter_.reset();
   chords_.reset();
   robotPhase_ = 0;
+  robotHold_ = 0;
+  robotHoldCount_ = 0;
 }
 
 float VoiceProcessor::process(float x) {
@@ -408,12 +459,19 @@ float VoiceProcessor::process(float x) {
       return squeakHp_.process(shifter_.process(x));
     }
     case VoiceMode::Robot: {
-      robotPhase_ += 72.f / static_cast<float>(sampleRate_);
+      robotPhase_ += 48.f / static_cast<float>(sampleRate_);
       if (robotPhase_ >= 1.f) {
         robotPhase_ -= 1.f;
       }
-      const float carrier = std::sin(2.f * static_cast<float>(M_PI) * robotPhase_);
-      return x * (0.78f + 0.22f * carrier);
+      const float sine = std::sin(2.f * static_cast<float>(M_PI) * robotPhase_);
+      const float square = std::tanh(sine * 8.f);
+      const float ring = x * square;
+      if (++robotHoldCount_ >= 11) {
+        robotHold_ = x;
+        robotHoldCount_ = 0;
+      }
+      const float y = 0.2f * x + 0.9f * ring + 0.35f * robotHold_ * square;
+      return std::tanh(1.25f * y);
     }
     case VoiceMode::Chords:
       return chords_.process(x);

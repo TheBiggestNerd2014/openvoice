@@ -1,6 +1,6 @@
 {
   "name": "openvoice",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Windows voice changer and soundboard for VB-CABLE",
   "main": "./out/main/index.js",
   "type": "module",

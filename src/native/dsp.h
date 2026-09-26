@@ -66,6 +66,7 @@ private:
   void analyzeIfReady();
   bool detectPitch(float* f0, float* confidence);
   int quantizeFromMidi(float midi) const;
+  int pickRandomRoot(float midi);
   void commitRoot(int midi);
   void retarget();
 
@@ -92,6 +93,9 @@ private:
   float midiHist_[5] = {};
   int histPos_ = 0;
   int histCount_ = 0;
+  float anchorMidi_ = 60.f;
+  int unvoicedHops_ = 0;
+  uint32_t rngState_ = 0xC0FFEEu;
 
   float targetSemis_[3] = {0.f, 4.f, 7.f};
   float currentSemis_[3] = {0.f, 4.f, 7.f};
@@ -118,6 +122,8 @@ private:
   AutoChords chords_;
   int sampleRate_ = 48000;
   float robotPhase_ = 0;
+  float robotHold_ = 0;
+  int robotHoldCount_ = 0;
   float pitchSemis_ = 0.f;
   float squeakSemis_ = 8.f;
 };
