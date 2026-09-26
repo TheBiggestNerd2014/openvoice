@@ -31,11 +31,12 @@ public:
   float process(float x);
 
 private:
+  static constexpr int kGrain = 1024;
   static constexpr int kLen = 4096;
   std::vector<float> delay_;
   int writePos_ = 0;
-  float readA_ = 0;
-  float readB_ = 0;
+  float behindA_ = 0;
+  float behindB_ = 0;
   float ratio_ = 1.f;
   int sampleRate_ = 48000;
 };
@@ -64,7 +65,7 @@ public:
 private:
   void analyzeIfReady();
   bool detectPitch(float* f0, float* confidence);
-  int quantizeMidi(float f0) const;
+  int quantizeFromMidi(float midi) const;
   void commitRoot(int midi);
   void retarget();
 
@@ -88,6 +89,9 @@ private:
   float smoothedMidi_ = 60.f;
   bool haveMidi_ = false;
   int hangSamples_ = 0;
+  float midiHist_[5] = {};
+  int histPos_ = 0;
+  int histCount_ = 0;
 
   float targetSemis_[3] = {0.f, 4.f, 7.f};
   float currentSemis_[3] = {0.f, 4.f, 7.f};

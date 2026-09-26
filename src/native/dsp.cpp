@@ -57,8 +57,8 @@ void PitchShifter::setSemitones(float semitones) {
 void PitchShifter::reset() {
   std::fill(delay_.begin(), delay_.end(), 0.f);
   writePos_ = 0;
-  readA_ = 0.f;
-  readB_ = static_cast<float>(kLen) * 0.5f;
+  behindA_ = static_cast<float>(kGrain) * 0.5f;
+  behindB_ = 0.f;
 }
 
 float PitchShifter::process(float x) {
@@ -67,51 +67,44 @@ float PitchShifter::process(float x) {
 
   if (std::fabs(ratio_ - 1.f) < 0.0015f) {
     writePos_ = (writePos_ + 1) % n;
-    readA_ = static_cast<float>(writePos_);
-    readB_ = std::fmod(readA_ + static_cast<float>(n) * 0.5f, static_cast<float>(n));
+    behindA_ = static_cast<float>(kGrain) * 0.5f;
+    behindB_ = 0.f;
     return x;
   }
 
-  auto sampleAt = [&](float read) {
-    while (read < 0.f) {
-      read += static_cast<float>(n);
+  auto tap = [&](float behind) {
+    float b = behind;
+    const float grain = static_cast<float>(kGrain);
+    while (b < 0.f) {
+      b += grain;
     }
-    while (read >= static_cast<float>(n)) {
-      read -= static_cast<float>(n);
+    while (b >= grain) {
+      b -= grain;
     }
-    const int i0 = static_cast<int>(read) % n;
+    float pos = static_cast<float>(writePos_) - b;
+    while (pos < 0.f) {
+      pos += static_cast<float>(n);
+    }
+    const int i0 = static_cast<int>(pos) % n;
     const int i1 = (i0 + 1) % n;
-    const float frac = read - std::floor(read);
-    return delay_[i0] + (delay_[i1] - delay_[i0]) * frac;
+    const float frac = pos - std::floor(pos);
+    const float sample = delay_[i0] + (delay_[i1] - delay_[i0]) * frac;
+    const float phase = b / grain;
+    const float window = 0.5f * (1.f - std::cos(2.f * static_cast<float>(M_PI) * phase));
+    return sample * window;
   };
 
-  auto weight = [&](float read) {
-    float behind = static_cast<float>(writePos_) - read;
-    while (behind < 0.f) {
-      behind += static_cast<float>(n);
-    }
-    while (behind >= static_cast<float>(n)) {
-      behind -= static_cast<float>(n);
-    }
-    const float phase = behind / static_cast<float>(n);
-    return 0.5f * (1.f - std::cos(2.f * static_cast<float>(M_PI) * phase));
-  };
-
-  const float wA = weight(readA_);
-  const float wB = weight(readB_);
-  const float wSum = wA + wB;
-  const float out = wSum > 0.001f
-                        ? (sampleAt(readA_) * wA + sampleAt(readB_) * wB) / wSum
-                        : sampleAt(readA_);
-
-  readA_ += ratio_;
-  readB_ += ratio_;
-  if (readA_ >= static_cast<float>(n)) {
-    readA_ -= static_cast<float>(n);
-  }
-  if (readB_ >= static_cast<float>(n)) {
-    readB_ -= static_cast<float>(n);
-  }
+  // Read heads advance at `ratio`. Negative semitones slow them and lower the pitch.
+  // Grains stay half a window apart and reset at the window edge, so loudness does not sweep.
+  const float out = tap(behindA_) + tap(behindB_);
+  const float drift = 1.f - ratio_;
+  behindA_ += drift;
+  behindB_ += drift;
+  const float grain = static_cast<float>(kGrain);
+  while (behindA_ < 0.f) behindA_ += grain;
+  while (behindA_ >= grain) behindA_ -= grain;
+  while (behindB_ < 0.f) behindB_ += grain;
+  while (behindB_ >= grain) behindB_ -= grain;
 
   writePos_ = (writePos_ + 1) % n;
   return out;
@@ -133,7 +126,7 @@ float OnePoleHighpass::process(float x) {
 
 void AutoChords::setup(int sampleRate) {
   sampleRate_ = sampleRate;
-  hop_ = 768;
+  hop_ = 512;
   yinSize_ = 1024;
   yinBuf_.assign(yinSize_, 0.f);
   yinDiff_.assign(yinSize_ / 2, 0.f);
@@ -170,6 +163,8 @@ void AutoChords::reset() {
   fifthSemis_ = 7;
   haveMidi_ = false;
   hangSamples_ = 0;
+  histPos_ = 0;
+  histCount_ = 0;
   env_ = 0;
   voiced_ = false;
   for (int i = 0; i < 3; ++i) {
@@ -186,16 +181,14 @@ bool AutoChords::detectPitch(float* f0, float* confidence) {
 
   float* diff = yinDiff_.data();
   float* cmnd = yinCmnd_.data();
-  for (int tau = 1; tau < maxTau; tau += 2) {
+  for (int tau = 1; tau < maxTau; ++tau) {
     float sum = 0;
-    for (int j = 0; j < n - tau; j += 2) {
+    const int step = 2;
+    for (int j = 0; j + tau < n; j += step) {
       const float d = yinBuf_[j] - yinBuf_[j + tau];
       sum += d * d;
     }
-    diff[tau] = sum * 2.f;
-    if (tau + 1 < maxTau) {
-      diff[tau + 1] = sum * 2.f;
-    }
+    diff[tau] = sum * static_cast<float>(step);
   }
 
   float running = 0;
@@ -250,11 +243,21 @@ bool AutoChords::detectPitch(float* f0, float* confidence) {
   return true;
 }
 
-int AutoChords::quantizeMidi(float f0) const {
-  const float midi = 69.f + 12.f * std::log2(f0 / 440.f);
-  const int pc = key_.snapPitchClass(static_cast<int>(std::round(midi)));
-  const float nearest = static_cast<float>(pc) + 12.f * std::round((midi - static_cast<float>(pc)) / 12.f);
-  return static_cast<int>(std::lround(nearest));
+int AutoChords::quantizeFromMidi(float midi) const {
+  const int baseOct = static_cast<int>(std::floor(midi / 12.f));
+  float best = midi;
+  float bestDist = 100.f;
+  for (int oct = baseOct - 1; oct <= baseOct + 1; ++oct) {
+    for (int i = 0; i < 7; ++i) {
+      const float cand = static_cast<float>(key_.scale[i] + oct * 12);
+      const float dist = std::fabs(cand - midi);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = cand;
+      }
+    }
+  }
+  return static_cast<int>(std::lround(best));
 }
 
 void AutoChords::retarget() {
@@ -291,14 +294,20 @@ void AutoChords::analyzeIfReady() {
 
   if (voiced) {
     const float midiF = 69.f + 12.f * std::log2(f0 / 440.f);
-    if (!haveMidi_) {
-      smoothedMidi_ = midiF;
-    } else {
-      smoothedMidi_ += (midiF - smoothedMidi_) * 0.45f;
+    midiHist_[histPos_] = midiF;
+    histPos_ = (histPos_ + 1) % 5;
+    if (histCount_ < 5) {
+      ++histCount_;
     }
+    float sorted[5];
+    for (int i = 0; i < histCount_; ++i) {
+      sorted[i] = midiHist_[i];
+    }
+    std::sort(sorted, sorted + histCount_);
+    smoothedMidi_ = sorted[histCount_ / 2];
     haveMidi_ = true;
 
-    const int midi = quantizeMidi(f0);
+    const int midi = quantizeFromMidi(smoothedMidi_);
     if (midi == proposedMidi_) {
       ++proposedStableHops_;
     } else {
@@ -339,7 +348,7 @@ float AutoChords::process(float voiceSample) {
   const float envCoeff = envTarget > env_ ? 0.004f : 0.00012f;
   env_ += (envTarget - env_) * envCoeff;
 
-  const float glide = 1.f - std::exp(-1.f / (0.05f * static_cast<float>(sampleRate_)));
+  const float glide = 1.f - std::exp(-1.f / (0.02f * static_cast<float>(sampleRate_)));
   float chord = 0.f;
   const float partGain[3] = {1.f, 0.82f, 0.74f};
   for (int i = 0; i < 3; ++i) {
