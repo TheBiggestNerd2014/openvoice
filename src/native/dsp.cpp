@@ -50,55 +50,65 @@ void PitchShifter::setup(int sampleRate) {
 }
 
 void PitchShifter::setSemitones(float semitones) {
+  // Negative semitones -> ratio < 1 -> read head moves slower -> lower pitch.
   ratio_ = std::pow(2.f, std::clamp(semitones, -24.f, 24.f) / 12.f);
 }
 
 void PitchShifter::reset() {
   std::fill(delay_.begin(), delay_.end(), 0.f);
   writePos_ = 0;
-  delayTime_ = static_cast<float>(kLen) * 0.25f;
+  readA_ = 0.f;
+  readB_ = static_cast<float>(kLen) * 0.5f;
 }
 
 float PitchShifter::process(float x) {
   const int n = static_cast<int>(delay_.size());
   delay_[writePos_] = x;
-  writePos_ = (writePos_ + 1) % n;
 
   if (std::fabs(ratio_ - 1.f) < 0.0015f) {
+    writePos_ = (writePos_ + 1) % n;
+    readA_ = static_cast<float>(writePos_);
+    readB_ = std::fmod(readA_ + static_cast<float>(n) * 0.5f, static_cast<float>(n));
     return x;
   }
 
-  auto tap = [&](float delaySamps) {
-    while (delaySamps < 1.f) {
-      delaySamps += static_cast<float>(n);
+  auto sampleAt = [&](float read) {
+    while (read < 0.f) {
+      read += static_cast<float>(n);
     }
-    while (delaySamps >= static_cast<float>(n)) {
-      delaySamps -= static_cast<float>(n);
+    while (read >= static_cast<float>(n)) {
+      read -= static_cast<float>(n);
     }
-    float pos = static_cast<float>(writePos_) - delaySamps;
-    while (pos < 0.f) {
-      pos += static_cast<float>(n);
-    }
-    const int i0 = static_cast<int>(pos) % n;
+    const int i0 = static_cast<int>(read) % n;
     const int i1 = (i0 + 1) % n;
-    const float frac = pos - std::floor(pos);
+    const float frac = read - std::floor(read);
     return delay_[i0] + (delay_[i1] - delay_[i0]) * frac;
   };
 
-  float d0 = delayTime_;
-  float d1 = delayTime_ + static_cast<float>(n) * 0.5f;
-  if (d1 >= static_cast<float>(n)) {
-    d1 -= static_cast<float>(n);
-  }
-  const float env = d0 / static_cast<float>(n);
-  const float out = tap(d0) * (1.f - env) + tap(d1) * env;
+  auto weight = [&](float read) {
+    float behind = static_cast<float>(writePos_) - read;
+    while (behind < 0.f) {
+      behind += static_cast<float>(n);
+    }
+    while (behind >= static_cast<float>(n)) {
+      behind -= static_cast<float>(n);
+    }
+    const float phase = behind / static_cast<float>(n);
+    return 0.5f * (1.f - std::cos(2.f * static_cast<float>(M_PI) * phase));
+  };
 
-  delayTime_ += 1.f - ratio_;
-  if (delayTime_ >= static_cast<float>(n)) {
-    delayTime_ -= static_cast<float>(n);
-  } else if (delayTime_ < 0.f) {
-    delayTime_ += static_cast<float>(n);
+  const float out = sampleAt(readA_) * weight(readA_) + sampleAt(readB_) * weight(readB_);
+
+  readA_ += ratio_;
+  readB_ += ratio_;
+  if (readA_ >= static_cast<float>(n)) {
+    readA_ -= static_cast<float>(n);
   }
+  if (readB_ >= static_cast<float>(n)) {
+    readB_ -= static_cast<float>(n);
+  }
+
+  writePos_ = (writePos_ + 1) % n;
   return out;
 }
 

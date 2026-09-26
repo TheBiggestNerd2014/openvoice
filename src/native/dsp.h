@@ -34,7 +34,8 @@ private:
   static constexpr int kLen = 4096;
   std::vector<float> delay_;
   int writePos_ = 0;
-  float delayTime_ = 0;
+  float readA_ = 0;
+  float readB_ = 0;
   float ratio_ = 1.f;
   int sampleRate_ = 48000;
 };
