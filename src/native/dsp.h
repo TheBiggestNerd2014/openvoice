@@ -31,14 +31,12 @@ public:
   float process(float x);
 
 private:
-  static constexpr int kGrain = 2048;
+  static constexpr int kLen = 4096;
   std::vector<float> delay_;
   int writePos_ = 0;
-  float behind_ = 0;
+  float delayTime_ = 0;
   float ratio_ = 1.f;
   int sampleRate_ = 48000;
-
-  float readAt(float behind) const;
 };
 
 class OnePoleHighpass {
@@ -87,6 +85,7 @@ private:
   float targetSemis_[3] = {0.f, 4.f, 7.f};
   float currentSemis_[3] = {0.f, 4.f, 7.f};
   PitchShifter voices_[3];
+  float harmState_ = 0;
   float env_ = 0;
   bool voiced_ = false;
 };

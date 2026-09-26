@@ -528,17 +528,17 @@ void Engine::stopPad(int id) {
 }
 
 float Engine::suppressFeedback(float mic) {
-  const float hp = 0.982f * (hpY_ + mic - hpX_);
+  const float hp = 0.993f * (hpY_ + mic - hpX_);
   hpX_ = mic;
   hpY_ = hp;
-  mic = hp;
+  mic = mic * 0.35f + hp * 0.65f;
   if (!micHist_.empty()) {
     micHist_[static_cast<size_t>(outWrite_)] = mic;
   }
 
   const float absMic = std::fabs(mic);
-  const float gateTarget = absMic > 0.04f ? 1.f : (absMic < 0.016f ? 0.f : gateEnv_);
-  gateEnv_ += (gateTarget - gateEnv_) * (gateTarget > gateEnv_ ? 0.12f : 0.008f);
+  const float gateTarget = absMic > 0.02f ? 1.f : (absMic < 0.006f ? 0.72f : gateEnv_);
+  gateEnv_ += (gateTarget - gateEnv_) * (gateTarget > gateEnv_ ? 0.05f : 0.003f);
 
   if (!outHist_.empty()) {
     const int n = static_cast<int>(outHist_.size());
@@ -547,27 +547,17 @@ float Engine::suppressFeedback(float mic) {
       idx += n;
     }
     const float delayed = outHist_[static_cast<size_t>(idx)];
-    echoCorr_ = 0.992f * echoCorr_ + 0.008f * mic * delayed;
-    echoPower_ = 0.992f * echoPower_ + 0.008f * delayed * delayed;
-    micPower_ = 0.992f * micPower_ + 0.008f * mic * mic;
-
-    if (echoPower_ > 1e-6f) {
-      const float gain = std::clamp(echoCorr_ / echoPower_, -1.2f, 1.2f);
-      mic -= gain * delayed;
-    }
+    echoCorr_ = 0.997f * echoCorr_ + 0.003f * mic * delayed;
+    echoPower_ = 0.997f * echoPower_ + 0.003f * delayed * delayed;
+    micPower_ = 0.997f * micPower_ + 0.003f * mic * mic;
 
     float coherence = 0.f;
     const float denom = micPower_ * echoPower_;
     if (denom > 1e-8f) {
       coherence = std::fabs(echoCorr_) / std::sqrt(denom);
     }
-    float duckTarget = 1.f;
-    if (coherence > 0.82f && echoPower_ > 0.0008f) {
-      duckTarget = 0.05f;
-    } else if (coherence > 0.62f && echoPower_ > 0.0004f) {
-      duckTarget = 0.28f;
-    }
-    const float coeff = duckTarget < duck_ ? 0.035f : 0.0015f;
+    const float duckTarget = (coherence > 0.94f && echoPower_ > 0.004f) ? 0.78f : 1.f;
+    const float coeff = duckTarget < duck_ ? 0.004f : 0.002f;
     duck_ += (duckTarget - duck_) * coeff;
     mic *= duck_;
   }
@@ -659,9 +649,9 @@ void Engine::onCapture(const float* input, unsigned frameCount, unsigned channel
 
     float mix = (voice + pads * padG) * outG;
     const float a = std::fabs(mix);
-    if (a > 0.55f) {
-      const float soft = 0.55f + (1.f - std::exp(-(a - 0.55f) * 3.f)) * 0.35f;
-      mix = std::copysign(std::min(soft, 0.92f), mix);
+    if (a > 0.86f) {
+      const float soft = 0.86f + (1.f - std::exp(-(a - 0.86f) * 2.f)) * 0.1f;
+      mix = std::copysign(std::min(soft, 0.96f), mix);
     }
     outPeak = std::max(outPeak, std::fabs(mix));
 

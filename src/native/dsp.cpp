@@ -45,7 +45,7 @@ void Key::triadIntervals(int rootPc, int* thirdSemis, int* fifthSemis) const {
 
 void PitchShifter::setup(int sampleRate) {
   sampleRate_ = sampleRate;
-  delay_.assign(kGrain * 2, 0.f);
+  delay_.assign(kLen, 0.f);
   reset();
 }
 
@@ -56,46 +56,49 @@ void PitchShifter::setSemitones(float semitones) {
 void PitchShifter::reset() {
   std::fill(delay_.begin(), delay_.end(), 0.f);
   writePos_ = 0;
-  behind_ = static_cast<float>(kGrain) * 0.5f;
-}
-
-float PitchShifter::readAt(float behind) const {
-  const int n = static_cast<int>(delay_.size());
-  float b = behind;
-  while (b < 0.f) {
-    b += static_cast<float>(kGrain);
-  }
-  while (b >= static_cast<float>(kGrain)) {
-    b -= static_cast<float>(kGrain);
-  }
-
-  float pos = static_cast<float>(writePos_) - b;
-  while (pos < 0.f) {
-    pos += static_cast<float>(n);
-  }
-  const int i0 = static_cast<int>(pos) % n;
-  const int i1 = (i0 + 1) % n;
-  const float frac = pos - std::floor(pos);
-  const float sample = delay_[i0] + (delay_[i1] - delay_[i0]) * frac;
-  const float phase = b / static_cast<float>(kGrain);
-  const float window = 0.5f * (1.f - std::cos(2.f * static_cast<float>(M_PI) * phase));
-  return sample * window;
+  delayTime_ = static_cast<float>(kLen) * 0.25f;
 }
 
 float PitchShifter::process(float x) {
   const int n = static_cast<int>(delay_.size());
   delay_[writePos_] = x;
+  writePos_ = (writePos_ + 1) % n;
 
-  const float out = readAt(behind_) + readAt(behind_ + static_cast<float>(kGrain) * 0.5f);
-
-  behind_ += 1.f - ratio_;
-  if (behind_ >= static_cast<float>(kGrain)) {
-    behind_ -= static_cast<float>(kGrain);
-  } else if (behind_ < 0.f) {
-    behind_ += static_cast<float>(kGrain);
+  if (std::fabs(ratio_ - 1.f) < 0.0015f) {
+    return x;
   }
 
-  writePos_ = (writePos_ + 1) % n;
+  auto tap = [&](float delaySamps) {
+    while (delaySamps < 1.f) {
+      delaySamps += static_cast<float>(n);
+    }
+    while (delaySamps >= static_cast<float>(n)) {
+      delaySamps -= static_cast<float>(n);
+    }
+    float pos = static_cast<float>(writePos_) - delaySamps;
+    while (pos < 0.f) {
+      pos += static_cast<float>(n);
+    }
+    const int i0 = static_cast<int>(pos) % n;
+    const int i1 = (i0 + 1) % n;
+    const float frac = pos - std::floor(pos);
+    return delay_[i0] + (delay_[i1] - delay_[i0]) * frac;
+  };
+
+  float d0 = delayTime_;
+  float d1 = delayTime_ + static_cast<float>(n) * 0.5f;
+  if (d1 >= static_cast<float>(n)) {
+    d1 -= static_cast<float>(n);
+  }
+  const float env = d0 / static_cast<float>(n);
+  const float out = tap(d0) * (1.f - env) + tap(d1) * env;
+
+  delayTime_ += 1.f - ratio_;
+  if (delayTime_ >= static_cast<float>(n)) {
+    delayTime_ -= static_cast<float>(n);
+  } else if (delayTime_ < 0.f) {
+    delayTime_ += static_cast<float>(n);
+  }
   return out;
 }
 
@@ -150,6 +153,7 @@ void AutoChords::reset() {
   activeRoot_ = -1;
   env_ = 0;
   voiced_ = false;
+  harmState_ = 0;
   for (int i = 0; i < 3; ++i) {
     currentSemis_[i] = targetSemis_[i];
     voices_[i].reset();
@@ -306,17 +310,18 @@ float AutoChords::process(float voiceSample) {
   analyzeIfReady();
 
   const float envTarget = (voiced_ && activeRoot_ >= 0) ? 1.f : 0.f;
-  const float envCoeff = envTarget > env_ ? 0.004f : 0.0012f;
+  const float envCoeff = envTarget > env_ ? 0.0015f : 0.0003f;
   env_ += (envTarget - env_) * envCoeff;
 
-  const float glide = 1.f - std::exp(-1.f / (0.04f * static_cast<float>(sampleRate_)));
-  float chord = 0.f;
-  for (int i = 0; i < 3; ++i) {
+  const float glide = 1.f - std::exp(-1.f / (0.09f * static_cast<float>(sampleRate_)));
+  float harmony = 0.f;
+  for (int i = 1; i < 3; ++i) {
     currentSemis_[i] += (targetSemis_[i] - currentSemis_[i]) * glide;
     voices_[i].setSemitones(currentSemis_[i]);
-    chord += voices_[i].process(voiceSample);
+    harmony += voices_[i].process(voiceSample);
   }
-  return chord * (0.55f * harmonyGain_ * env_);
+  harmState_ += (harmony - harmState_) * 0.22f;
+  return voiceSample + harmState_ * (0.34f * harmonyGain_ * env_);
 }
 
 void VoiceProcessor::setup(int sampleRate) {
@@ -373,8 +378,7 @@ float VoiceProcessor::process(float x) {
         robotPhase_ -= 1.f;
       }
       const float carrier = std::sin(2.f * static_cast<float>(M_PI) * robotPhase_);
-      const float buzz = x * (0.62f + 0.38f * carrier);
-      return std::round(buzz * 18.f) / 18.f;
+      return x * (0.78f + 0.22f * carrier);
     }
     case VoiceMode::Chords:
       return chords_.process(x);
