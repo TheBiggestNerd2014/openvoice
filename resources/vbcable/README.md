@@ -1,7 +1,5 @@
-Place the official VB-CABLE installer here (unmodified), for example:
+Drop the official VB-CABLE driver zip here, unmodified.
 
-    VBCABLE_Setup_x64.exe
+OpenVoice unpacks the whole archive and runs the 64-bit setup from that folder, so the installer stays next to its driver files.
 
 Download it from https://vb-audio.com/Cable/
-
-OpenVoice launches this file when the user chooses **Install VB-CABLE**. Do not rename it to something that no longer ends in `.exe`. Review VB-Audio’s license before redistributing the installer with a packaged build.

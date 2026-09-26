@@ -212,7 +212,7 @@ export function App() {
               }
             }}
             disabled={!installerBundled}
-            title={installerBundled ? 'Launch bundled VB-CABLE setup' : 'Drop the official setup .exe into resources/vbcable'}
+            title={installerBundled ? 'Install VB-CABLE' : 'This build does not include the VB-CABLE installer'}
           >
             Install VB-CABLE
           </button>

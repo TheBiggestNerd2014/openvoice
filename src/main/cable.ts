@@ -1,6 +1,10 @@
-import { existsSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
-import { app, shell } from 'electron'
+import { execFile, spawn } from 'node:child_process'
+import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { promisify } from 'node:util'
+import { app } from 'electron'
+
+const execFileAsync = promisify(execFile)
 
 export function vbcableDir(): string {
   if (app.isPackaged) {
@@ -9,26 +13,98 @@ export function vbcableDir(): string {
   return join(app.getAppPath(), 'resources', 'vbcable')
 }
 
+function walk(dir: string): string[] {
+  if (!existsSync(dir)) {
+    return []
+  }
+  const found: string[] = []
+  for (const name of readdirSync(dir)) {
+    const path = join(dir, name)
+    if (statSync(path).isDirectory()) {
+      found.push(...walk(path))
+    } else {
+      found.push(path)
+    }
+  }
+  return found
+}
+
+function setupRank(path: string): number {
+  const name = path.toLowerCase()
+  if (!name.endsWith('.exe')) {
+    return 0
+  }
+  if (name.includes('x64') && name.includes('setup')) {
+    return 4
+  }
+  if (name.includes('x64')) {
+    return 3
+  }
+  if (name.includes('setup')) {
+    return 2
+  }
+  return 1
+}
+
+function findSetupExe(dir: string): string | null {
+  let best: string | null = null
+  let bestRank = 0
+  for (const path of walk(dir)) {
+    const rank = setupRank(path)
+    if (rank > bestRank) {
+      best = path
+      bestRank = rank
+    }
+  }
+  return best
+}
+
 export function findBundledInstaller(): string | null {
   const dir = vbcableDir()
   if (!existsSync(dir)) {
     return null
   }
-  const exe = readdirSync(dir).find((name) => name.toLowerCase().endsWith('.exe'))
-  return exe ? join(dir, exe) : null
+  const names = readdirSync(dir)
+  const zip = names.find((name) => name.toLowerCase().endsWith('.zip'))
+  if (zip) {
+    return join(dir, zip)
+  }
+  return findSetupExe(dir)
+}
+
+async function extractZip(zipPath: string, dest: string): Promise<void> {
+  mkdirSync(dest, { recursive: true })
+  await execFileAsync('tar', ['-xf', zipPath, '-C', dest], { windowsHide: true })
 }
 
 export async function launchBundledInstaller(): Promise<{ ok: boolean; path?: string; error?: string }> {
-  const path = findBundledInstaller()
-  if (!path) {
-    return {
-      ok: false,
-      error: 'No VB-CABLE installer found. Place the official setup .exe in resources/vbcable/.'
+  const bundled = findBundledInstaller()
+  if (!bundled) {
+    return { ok: false, error: 'This build does not include the VB-CABLE installer.' }
+  }
+
+  let setupDir = vbcableDir()
+  if (bundled.toLowerCase().endsWith('.zip')) {
+    setupDir = join(app.getPath('temp'), 'openvoice-vbcable')
+    try {
+      await extractZip(bundled, setupDir)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unpack failed'
+      return { ok: false, path: bundled, error: `Couldn't unpack VB-CABLE. ${message}` }
     }
   }
-  const err = await shell.openPath(path)
-  if (err) {
-    return { ok: false, path, error: err }
+
+  const exe = findSetupExe(setupDir)
+  if (!exe) {
+    return { ok: false, path: bundled, error: 'The VB-CABLE package does not contain a setup program.' }
   }
-  return { ok: true, path }
+
+  const child = spawn(exe, [], {
+    cwd: dirname(exe),
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: false
+  })
+  child.unref()
+  return { ok: true, path: exe }
 }

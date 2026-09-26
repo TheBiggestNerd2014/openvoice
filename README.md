@@ -1,46 +1,32 @@
 # OpenVoice
 
-Windows voice changer and soundboard that outputs through [VB-CABLE](https://vb-audio.com/Cable/). Other apps (Discord, games) should use **CABLE Output** as their microphone.
+OpenVoice is a Windows voice changer and soundboard. Your microphone goes through OpenVoice into VB-CABLE, so Discord, games, and other apps hear the changed voice.
 
-Pitch, Squeaky, Robot, and the soundboard are the stable features. Auto Chords is included and marked as a work in progress.
+## Install
 
-## Requirements
-
-- Windows 10/11 x64
-- Node.js 20+
-- Visual Studio 2022 with the **Desktop development with C++** workload (for the native audio addon)
-- [VB-CABLE](https://vb-audio.com/Cable/) (the app can launch the official installer)
-
-## Develop
-
-```bash
-npm install
-npm run native:build
-npm run dev
-```
-
-## Installer
-
-```bash
-npm run dist
-```
-
-The NSIS installer is written to `dist/`.
-
-## Updates
-
-Installed builds use [electron-updater](https://www.electron.build/auto-update) and poll GitHub Releases while online. **Pre-releases are ignored** (`allowPrerelease: false`). Only published full releases are applied.
-
-1. The GitHub repo is [thebiggestnerd2014/openvoice](https://github.com/thebiggestnerd2014/openvoice).
-2. Publish a normal Release (not marked pre-release) that includes `OpenVoice-Setup-*.exe` and the generated `latest.yml`.
-3. From a machine with a GitHub token: `GH_TOKEN=... npx electron-builder --win nsis --publish always`
-
-The app checks on launch and every 4 hours. When a release is downloaded, it installs on quit, or immediately from **Restart and install**.
+Download **OpenVoice-Setup** from the [releases](https://github.com/TheBiggestNerd2014/openvoice/releases) page and run it.
 
 ## VB-CABLE
 
-Place the official, unmodified VB-CABLE setup executable in `resources/vbcable/` (for example `VBCABLE_Setup_x64.exe`). OpenVoice will offer to run it if **CABLE Input** is not found. Check VB-Audio’s redistribution terms before shipping that file.
+OpenVoice plays into **CABLE Input**. In Discord or a game, set the microphone to **CABLE Output**.
 
-## Soundboard clips
+If VB-CABLE is not installed, choose **Install VB-CABLE** in OpenVoice and follow the setup. Restart any app that was already using the microphone.
 
-Drop wav/mp3/ogg files into `sounds/` when developing, or add them from the app. There are no built-in clips.
+Use headphones if you turn on the monitor. Speakers can send the changed voice back into the mic.
+
+## Voices
+
+- **Pitch** lowers or raises your voice.
+- **Squeaky** shifts the voice up.
+- **Robot** gives the voice a hard digital ring.
+- **Auto Chords** is a work in progress.
+
+## Soundboard
+
+Add your own wav, mp3, or ogg clips. Play a pad from the app, or bind a global hotkey. Arrow keys, letters, space, and the numpad can all be used.
+
+## Updates
+
+OpenVoice checks GitHub for updates. It can install one when you quit, or right away from **Restart and install**. Pre-releases are ignored.
+
+Licensed under [CC BY-ND 4.0](https://creativecommons.org/licenses/by-nd/4.0/).
