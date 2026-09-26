@@ -295,6 +295,9 @@ void AutoChords::commitRoot(int midi) {
   activeRoot_ = midi;
   key_.triadIntervals(midi, &thirdSemis_, &fifthSemis_);
   retarget();
+  for (int i = 0; i < 3; ++i) {
+    currentSemis_[i] = targetSemis_[i];
+  }
 }
 
 void AutoChords::analyzeIfReady() {
@@ -315,7 +318,13 @@ void AutoChords::analyzeIfReady() {
   voiced_ = voiced;
 
   if (voiced) {
-    const float midiF = 69.f + 12.f * std::log2(f0 / 440.f);
+    float midiF = 69.f + 12.f * std::log2(f0 / 440.f);
+    if (activeRoot_ >= 0) {
+      const float octs = std::round((midiF - anchorMidi_) / 12.f);
+      if (std::fabs(octs) >= 1.f && std::fabs(midiF - anchorMidi_ - octs * 12.f) < 1.25f) {
+        midiF -= octs * 12.f;
+      }
+    }
     midiHist_[histPos_] = midiF;
     histPos_ = (histPos_ + 1) % 5;
     if (histCount_ < 5) {
@@ -330,38 +339,35 @@ void AutoChords::analyzeIfReady() {
     haveMidi_ = true;
 
     unvoicedHops_ = 0;
-    // A small wobble must not retune the chord. A real rise or fall steps
-    // to the next legitimate triad in that direction.
-    constexpr float kDeadzone = 2.f;
+    // Lock onto one triad. Pitch wobble does not move it. Only a jump of
+    // a fourth or more steps to another legitimate triad, in the same direction.
+    constexpr float kDramatic = 5.f;
     if (activeRoot_ < 0) {
       commitRoot(pickRandomRoot(smoothedMidi_));
       anchorMidi_ = smoothedMidi_;
       proposedMidi_ = activeRoot_;
       proposedStableHops_ = 0;
-    } else {
+    } else if (std::fabs(smoothedMidi_ - anchorMidi_) >= kDramatic) {
       const float delta = smoothedMidi_ - anchorMidi_;
-      if (std::fabs(delta) >= kDeadzone) {
-        const int snapped = quantizeFromMidi(static_cast<float>(activeRoot_) + delta);
-        const bool sameWay = (delta > 0.f && snapped > activeRoot_) || (delta < 0.f && snapped < activeRoot_);
-        if (sameWay) {
-          if (snapped == proposedMidi_) {
-            ++proposedStableHops_;
-          } else {
-            proposedMidi_ = snapped;
-            proposedStableHops_ = 1;
-          }
-          const float hopSec = static_cast<float>(hop_) / static_cast<float>(sampleRate_);
-          const int need = std::max(1, static_cast<int>(std::ceil((holdMs_ / 1000.f) / hopSec)));
-          if (proposedStableHops_ >= need) {
-            commitRoot(snapped);
-            anchorMidi_ = smoothedMidi_;
-          }
+      const int snapped = quantizeFromMidi(static_cast<float>(activeRoot_) + delta);
+      const bool sameWay = (delta > 0.f && snapped > activeRoot_) || (delta < 0.f && snapped < activeRoot_);
+      if (sameWay) {
+        if (snapped == proposedMidi_) {
+          ++proposedStableHops_;
+        } else {
+          proposedMidi_ = snapped;
+          proposedStableHops_ = 1;
         }
-      } else {
-        proposedMidi_ = activeRoot_;
-        proposedStableHops_ = 0;
+        const float hopSec = static_cast<float>(hop_) / static_cast<float>(sampleRate_);
+        const int need = std::max(1, static_cast<int>(std::ceil((holdMs_ / 1000.f) / hopSec)));
+        if (proposedStableHops_ >= need) {
+          commitRoot(snapped);
+          anchorMidi_ = smoothedMidi_;
+        }
       }
-      retarget();
+    } else {
+      proposedMidi_ = activeRoot_;
+      proposedStableHops_ = 0;
     }
   } else {
     ++unvoicedHops_;
@@ -397,15 +403,13 @@ float AutoChords::process(float voiceSample) {
   const float envCoeff = envTarget > env_ ? 0.004f : 0.00012f;
   env_ += (envTarget - env_) * envCoeff;
 
-  const float glide = 1.f - std::exp(-1.f / (0.02f * static_cast<float>(sampleRate_)));
   float chord = 0.f;
   const float partGain[3] = {1.f, 0.82f, 0.74f};
   for (int i = 0; i < 3; ++i) {
-    currentSemis_[i] += (targetSemis_[i] - currentSemis_[i]) * glide;
     voices_[i].setSemitones(currentSemis_[i]);
     chord += voices_[i].process(voiceSample) * partGain[i];
   }
-  return chord * (0.42f * harmonyGain_ * env_);
+  return chord * (1.15f * harmonyGain_ * env_);
 }
 
 void VoiceProcessor::setup(int sampleRate) {

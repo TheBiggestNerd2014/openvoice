@@ -647,11 +647,12 @@ void Engine::onCapture(const float* input, unsigned frameCount, unsigned channel
       pads_[p].playPos.store(pos >= n ? -1 : pos, std::memory_order_relaxed);
     }
 
-    float mix = (voice + pads * padG) * outG;
+    float mix = (voice + pads * padG) * outG * 6.f;
     const float a = std::fabs(mix);
-    if (a > 0.86f) {
-      const float soft = 0.86f + (1.f - std::exp(-(a - 0.86f) * 2.f)) * 0.1f;
-      mix = std::copysign(std::min(soft, 0.96f), mix);
+    if (a > 0.75f) {
+      const float over = a - 0.75f;
+      const float soft = 0.75f + over / (1.f + over * 1.6f);
+      mix = std::copysign(std::min(soft, 0.98f), mix);
     }
     outPeak = std::max(outPeak, std::fabs(mix));
 
