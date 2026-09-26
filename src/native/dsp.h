@@ -66,6 +66,7 @@ private:
   bool detectPitch(float* f0, float* confidence);
   int quantizeMidi(float f0) const;
   void commitRoot(int midi);
+  void retarget();
 
   Key key_{};
   int sampleRate_ = 48000;
@@ -82,11 +83,15 @@ private:
   int proposedMidi_ = -1;
   int proposedStableHops_ = 0;
   int activeRoot_ = -1;
+  int thirdSemis_ = 4;
+  int fifthSemis_ = 7;
+  float smoothedMidi_ = 60.f;
+  bool haveMidi_ = false;
+  int hangSamples_ = 0;
 
   float targetSemis_[3] = {0.f, 4.f, 7.f};
   float currentSemis_[3] = {0.f, 4.f, 7.f};
   PitchShifter voices_[3];
-  float harmState_ = 0;
   float env_ = 0;
   bool voiced_ = false;
 };

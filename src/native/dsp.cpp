@@ -97,7 +97,12 @@ float PitchShifter::process(float x) {
     return 0.5f * (1.f - std::cos(2.f * static_cast<float>(M_PI) * phase));
   };
 
-  const float out = sampleAt(readA_) * weight(readA_) + sampleAt(readB_) * weight(readB_);
+  const float wA = weight(readA_);
+  const float wB = weight(readB_);
+  const float wSum = wA + wB;
+  const float out = wSum > 0.001f
+                        ? (sampleAt(readA_) * wA + sampleAt(readB_) * wB) / wSum
+                        : sampleAt(readA_);
 
   readA_ += ratio_;
   readB_ += ratio_;
@@ -161,9 +166,12 @@ void AutoChords::reset() {
   proposedMidi_ = -1;
   proposedStableHops_ = 0;
   activeRoot_ = -1;
+  thirdSemis_ = 4;
+  fifthSemis_ = 7;
+  haveMidi_ = false;
+  hangSamples_ = 0;
   env_ = 0;
   voiced_ = false;
-  harmState_ = 0;
   for (int i = 0; i < 3; ++i) {
     currentSemis_[i] = targetSemis_[i];
     voices_[i].reset();
@@ -244,33 +252,24 @@ bool AutoChords::detectPitch(float* f0, float* confidence) {
 
 int AutoChords::quantizeMidi(float f0) const {
   const float midi = 69.f + 12.f * std::log2(f0 / 440.f);
-  int nearest = static_cast<int>(std::round(midi));
-  const int octave = static_cast<int>(std::floor(nearest / 12.f));
-  const int pc = key_.snapPitchClass(nearest);
-  return octave * 12 + pc;
+  const int pc = key_.snapPitchClass(static_cast<int>(std::round(midi)));
+  const float nearest = static_cast<float>(pc) + 12.f * std::round((midi - static_cast<float>(pc)) / 12.f);
+  return static_cast<int>(std::lround(nearest));
+}
+
+void AutoChords::retarget() {
+  if (!haveMidi_ || activeRoot_ < 0) {
+    return;
+  }
+  targetSemis_[0] = static_cast<float>(activeRoot_) - smoothedMidi_;
+  targetSemis_[1] = static_cast<float>(activeRoot_ + thirdSemis_) - smoothedMidi_;
+  targetSemis_[2] = static_cast<float>(activeRoot_ + fifthSemis_) - smoothedMidi_;
 }
 
 void AutoChords::commitRoot(int midi) {
   activeRoot_ = midi;
-  int third = 4;
-  int fifth = 7;
-  key_.triadIntervals(midi, &third, &fifth);
-
-  int placed = midi;
-  while (placed < 48) {
-    placed += 12;
-  }
-  while (placed + fifth > 84) {
-    placed -= 12;
-  }
-  if (placed < 48) {
-    placed += 12;
-  }
-
-  const int rootShift = placed - midi;
-  targetSemis_[0] = static_cast<float>(rootShift);
-  targetSemis_[1] = static_cast<float>(rootShift + third);
-  targetSemis_[2] = static_cast<float>(rootShift + fifth);
+  key_.triadIntervals(midi, &thirdSemis_, &fifthSemis_);
+  retarget();
 }
 
 void AutoChords::analyzeIfReady() {
@@ -291,6 +290,14 @@ void AutoChords::analyzeIfReady() {
   voiced_ = voiced;
 
   if (voiced) {
+    const float midiF = 69.f + 12.f * std::log2(f0 / 440.f);
+    if (!haveMidi_) {
+      smoothedMidi_ = midiF;
+    } else {
+      smoothedMidi_ += (midiF - smoothedMidi_) * 0.45f;
+    }
+    haveMidi_ = true;
+
     const int midi = quantizeMidi(f0);
     if (midi == proposedMidi_) {
       ++proposedStableHops_;
@@ -303,6 +310,8 @@ void AutoChords::analyzeIfReady() {
     const int need = std::max(1, static_cast<int>(std::ceil((holdMs_ / 1000.f) / hopSec)));
     if (activeRoot_ < 0 || (midi != activeRoot_ && proposedStableHops_ >= need)) {
       commitRoot(midi);
+    } else {
+      retarget();
     }
   }
 
@@ -319,19 +328,26 @@ float AutoChords::process(float voiceSample) {
   }
   analyzeIfReady();
 
-  const float envTarget = (voiced_ && activeRoot_ >= 0) ? 1.f : 0.f;
-  const float envCoeff = envTarget > env_ ? 0.0015f : 0.0003f;
+  const bool sounding = voiced_ || std::fabs(voiceSample) > 0.008f;
+  if (sounding && activeRoot_ >= 0) {
+    hangSamples_ = sampleRate_;
+  } else if (hangSamples_ > 0) {
+    --hangSamples_;
+  }
+
+  const float envTarget = (activeRoot_ >= 0 && hangSamples_ > 0) ? 1.f : 0.f;
+  const float envCoeff = envTarget > env_ ? 0.004f : 0.00012f;
   env_ += (envTarget - env_) * envCoeff;
 
-  const float glide = 1.f - std::exp(-1.f / (0.09f * static_cast<float>(sampleRate_)));
-  float harmony = 0.f;
-  for (int i = 1; i < 3; ++i) {
+  const float glide = 1.f - std::exp(-1.f / (0.05f * static_cast<float>(sampleRate_)));
+  float chord = 0.f;
+  const float partGain[3] = {1.f, 0.82f, 0.74f};
+  for (int i = 0; i < 3; ++i) {
     currentSemis_[i] += (targetSemis_[i] - currentSemis_[i]) * glide;
     voices_[i].setSemitones(currentSemis_[i]);
-    harmony += voices_[i].process(voiceSample);
+    chord += voices_[i].process(voiceSample) * partGain[i];
   }
-  harmState_ += (harmony - harmState_) * 0.22f;
-  return voiceSample + harmState_ * (0.34f * harmonyGain_ * env_);
+  return chord * (0.42f * harmonyGain_ * env_);
 }
 
 void VoiceProcessor::setup(int sampleRate) {
