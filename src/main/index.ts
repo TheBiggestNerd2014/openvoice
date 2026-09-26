@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, nativeTheme, shell } from 'electron'
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { loadAddon } from './addon'
@@ -6,7 +6,7 @@ import { loadSettings, saveSettings } from './settings'
 import { applyHotkeys, clearHotkeys, setPlayHandler } from './hotkeys'
 import { findBundledInstaller, launchBundledInstaller } from './cable'
 import { startAutoUpdater, getUpdateStatus, onUpdateStatus, quitAndInstall } from './updater'
-import { defaultSettings, type AppSettings, type VoiceMode } from '../shared/types'
+import { defaultSettings, type AppSettings, type ThemeMode, type VoiceMode } from '../shared/types'
 
 function appIcon(): string | undefined {
   const packed = join(app.getAppPath(), 'resources', 'build', 'icon.png')
@@ -35,16 +35,24 @@ const voiceModeIndex = (mode: VoiceMode): number => {
 let mainWindow: BrowserWindow | null = null
 let settings: AppSettings = defaultSettings()
 
+function applyWindowTheme(theme: ThemeMode): void {
+  nativeTheme.themeSource = theme
+  mainWindow?.setBackgroundColor(theme === 'dark' ? '#071018' : '#e7f1fc')
+}
+
 function createWindow(): void {
+  const dark = settings.theme === 'dark'
   mainWindow = new BrowserWindow({
-    width: 920,
-    height: 720,
-    minWidth: 780,
-    minHeight: 600,
+    width: 1040,
+    height: 860,
+    minWidth: 880,
+    minHeight: 680,
     show: false,
     autoHideMenuBar: true,
     icon: appIcon(),
-    backgroundColor: '#12141a',
+    backgroundMaterial: 'acrylic',
+    roundedCorners: true,
+    backgroundColor: dark ? '#071018' : '#e7f1fc',
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
       sandbox: false,
@@ -95,11 +103,18 @@ async function reloadPads(): Promise<void> {
 
 app.whenReady().then(async () => {
   settings = loadSettings()
+  if (settings.theme !== 'light' && settings.theme !== 'dark') {
+    settings.theme = 'light'
+  }
 
   try {
     const audio = loadAddon()
     setPlayHandler((id) => audio.playPad(id))
-    applyHotkeys(settings.pads)
+    const hotkeys = applyHotkeys(settings.pads)
+    if (hotkeys.changed) {
+      settings.pads = hotkeys.pads
+      saveSettings(settings)
+    }
 
     const cable = audio.findCable()
     if (cable.found && !settings.cableId) {
@@ -146,16 +161,22 @@ app.whenReady().then(async () => {
   ipcMain.handle('settings:get', () => settings)
   ipcMain.handle('settings:update', (_e, patch: Partial<AppSettings>) => {
     settings = { ...settings, ...patch, pads: patch.pads ?? settings.pads }
+    let warning: string | undefined
+    if (patch.pads) {
+      const hotkeys = applyHotkeys(settings.pads)
+      settings.pads = hotkeys.pads
+      warning = hotkeys.warning
+    }
+    if (patch.theme === 'light' || patch.theme === 'dark') {
+      applyWindowTheme(patch.theme)
+    }
     saveSettings(settings)
     try {
       pushAudioParams()
     } catch {
       // addon may be missing during first-run UI
     }
-    if (patch.pads) {
-      applyHotkeys(settings.pads)
-    }
-    return settings
+    return { settings, warning }
   })
   ipcMain.handle('audio:restart', async (_e, ids: { inputId: string; cableId: string; monitorId: string }) => {
     settings.inputId = ids.inputId
@@ -200,8 +221,9 @@ app.whenReady().then(async () => {
         console.warn(err)
       }
     }
+    const hotkeys = applyHotkeys(settings.pads)
+    settings.pads = hotkeys.pads
     saveSettings(settings)
-    applyHotkeys(settings.pads)
     return settings
   })
   ipcMain.handle('pads:remove', (_e, id: number) => {
@@ -211,8 +233,9 @@ app.whenReady().then(async () => {
       // ignore
     }
     settings.pads = settings.pads.filter((p) => p.id !== id)
+    const hotkeys = applyHotkeys(settings.pads)
+    settings.pads = hotkeys.pads
     saveSettings(settings)
-    applyHotkeys(settings.pads)
     return settings
   })
   ipcMain.handle('pads:play', (_e, id: number) => {
@@ -238,6 +261,7 @@ app.whenReady().then(async () => {
   })
 
   createWindow()
+  applyWindowTheme(settings.theme)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

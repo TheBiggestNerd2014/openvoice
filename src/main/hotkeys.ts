@@ -1,4 +1,5 @@
 import { globalShortcut } from 'electron'
+import { normalizeAccelerator } from '../shared/accelerator'
 import type { PadBinding } from '../shared/types'
 
 type PlayFn = (id: number) => void
@@ -9,20 +10,35 @@ export function setPlayHandler(fn: PlayFn): void {
   play = fn
 }
 
-export function applyHotkeys(pads: PadBinding[]): void {
+export function applyHotkeys(pads: PadBinding[]): { pads: PadBinding[]; warning?: string; changed: boolean } {
   globalShortcut.unregisterAll()
-  for (const pad of pads) {
+  const failed: string[] = []
+  const next = pads.map((pad) => {
     if (!pad.hotkey) {
-      continue
+      return pad
+    }
+    const accelerator = normalizeAccelerator(pad.hotkey)
+    if (!accelerator) {
+      failed.push(pad.hotkey)
+      return { ...pad, hotkey: '' }
     }
     try {
-      const ok = globalShortcut.register(pad.hotkey, () => play(pad.id))
+      const ok = globalShortcut.register(accelerator, () => play(pad.id))
       if (!ok) {
-        console.warn(`Hotkey in use: ${pad.hotkey}`)
+        failed.push(accelerator)
+        return { ...pad, hotkey: '' }
       }
-    } catch (err) {
-      console.warn(`Invalid hotkey ${pad.hotkey}`, err)
+      return { ...pad, hotkey: accelerator }
+    } catch {
+      failed.push(accelerator)
+      return { ...pad, hotkey: '' }
     }
+  })
+  const changed = pads.some((pad, index) => pad.hotkey !== next[index]?.hotkey)
+  return {
+    pads: next,
+    changed,
+    warning: failed.length > 0 ? `Could not register ${failed.join(', ')}. Pick another key.` : undefined
   }
 }
 

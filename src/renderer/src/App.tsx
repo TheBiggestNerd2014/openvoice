@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { acceleratorFromEvent, formatAccelerator } from '../../shared/accelerator'
 import {
   defaultSettings,
   type AppSettings,
   type AudioDevice,
   type AudioStatus,
+  type ThemeMode,
   type UpdateStatus,
   type VoiceMode
 } from '../../shared/types'
@@ -13,26 +15,12 @@ const isCableOutput = (name: string): boolean => /cable output/i.test(name)
 const isCableInput = (name: string): boolean => /cable input/i.test(name)
 const isLoopback = (name: string): boolean => /loopback|stereo mix/i.test(name)
 
-const voices: { id: VoiceMode; label: string }[] = [
+const voices: { id: VoiceMode; label: string; wip?: boolean }[] = [
   { id: 'pitch', label: 'Pitch' },
   { id: 'squeaky', label: 'Squeaky' },
   { id: 'robot', label: 'Robot' },
-  { id: 'chords', label: 'Auto Chords' }
+  { id: 'chords', label: 'Auto Chords', wip: true }
 ]
-
-function eventToAccelerator(e: KeyboardEvent): string | null {
-  if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) {
-    return null
-  }
-  const parts: string[] = []
-  if (e.ctrlKey) parts.push('Control')
-  if (e.altKey) parts.push('Alt')
-  if (e.shiftKey) parts.push('Shift')
-  if (e.metaKey) parts.push('Super')
-  const key = e.key.length === 1 ? e.key.toUpperCase() : e.key
-  parts.push(key)
-  return parts.join('+')
-}
 
 function DeviceSelect({
   label,
@@ -82,6 +70,9 @@ export function App() {
   const [update, setUpdate] = useState<UpdateStatus>({ state: 'idle' })
 
   const refresh = useCallback(async () => {
+    if (!window.openvoice) {
+      return
+    }
     const [nextSettings, devices, nextStatus, installer, nextUpdate] = await Promise.all([
       window.openvoice.getSettings(),
       window.openvoice.listDevices(),
@@ -98,16 +89,38 @@ export function App() {
   }, [])
 
   useEffect(() => {
+    document.documentElement.dataset.theme = settings.theme
+  }, [settings.theme])
+
+  useEffect(() => {
     void refresh()
+    if (!window.openvoice) {
+      return
+    }
     return window.openvoice.onUpdate(setUpdate)
   }, [refresh])
 
   useEffect(() => {
+    if (!window.openvoice) {
+      return
+    }
     const timer = window.setInterval(async () => {
       setMeters(await window.openvoice.meters())
       setStatus(await window.openvoice.status())
     }, 80)
     return () => window.clearInterval(timer)
+  }, [])
+
+  const commit = useCallback(async (patch: Partial<AppSettings>) => {
+    if (!window.openvoice) {
+      setSettings((current) => ({ ...current, ...patch }))
+      return
+    }
+    const result = await window.openvoice.updateSettings(patch)
+    if (patch.pads || result.warning) {
+      setMessage(result.warning ?? '')
+    }
+    setSettings(result.settings)
   }, [])
 
   useEffect(() => {
@@ -116,29 +129,34 @@ export function App() {
     }
     const onKey = (e: KeyboardEvent) => {
       e.preventDefault()
+      e.stopPropagation()
       if (e.key === 'Escape') {
         setBindId(null)
         return
       }
-      const accel = eventToAccelerator(e)
+      const accel = acceleratorFromEvent(e)
       if (!accel) {
+        setMessage('That key can’t be a global hotkey. Try arrows, letters, space, or the numpad.')
         return
       }
       const pads = settings.pads.map((p) => (p.id === bindId ? { ...p, hotkey: accel } : p))
-      void window.openvoice.updateSettings({ pads }).then(setSettings)
+      void commit({ pads })
       setBindId(null)
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [bindId, settings.pads])
+  }, [bindId, settings.pads, commit])
 
-  const cableMissing = !status.cablePresent
+  const cableMissing = !status.cablePresent && Boolean(window.openvoice)
   const micDevices = inputs.filter((d) => !isCableOutput(d.name) && !isLoopback(d.name))
   const monitorDevices = outputs.filter((d) => !isCableInput(d.name))
 
   const applyDevices = async (patch: Partial<Pick<AppSettings, 'inputId' | 'cableId' | 'monitorId'>>) => {
     const next = { ...settings, ...patch }
     setSettings(next)
+    if (!window.openvoice) {
+      return
+    }
     setStatus(
       await window.openvoice.restartAudio({
         inputId: next.inputId,
@@ -148,8 +166,8 @@ export function App() {
     )
   }
 
-  const patchSettings = async (patch: Partial<AppSettings>) => {
-    setSettings(await window.openvoice.updateSettings(patch))
+  const setTheme = (theme: ThemeMode) => {
+    void commit({ theme })
   }
 
   const inWidth = useMemo(() => `${Math.min(100, meters.input * 140)}%`, [meters.input])
@@ -162,8 +180,16 @@ export function App() {
           <img className="logo" src={logo} alt="" />
           <div>
             <h1>OpenVoice</h1>
-            <p className="sub">Mic → effects → CABLE Input. Other apps listen on CABLE Output.</p>
+            <p className="sub">Mic, effects, and soundboard into VB-CABLE.</p>
           </div>
+        </div>
+        <div className="theme-switch" role="group" aria-label="Color theme">
+          <button className={settings.theme === 'light' ? 'on' : ''} onClick={() => setTheme('light')}>
+            Light
+          </button>
+          <button className={settings.theme === 'dark' ? 'on' : ''} onClick={() => setTheme('dark')}>
+            Dark
+          </button>
         </div>
       </header>
 
@@ -171,11 +197,14 @@ export function App() {
         <div className="banner">
           <p>
             VB-CABLE was not found. Install it, then pick <strong>CABLE Input</strong> as the output
-            here. Discord / games should use <strong>CABLE Output</strong> as the mic.
+            here. Discord and games should use <strong>CABLE Output</strong> as the mic.
           </p>
           <button
-            className="toggle"
+            className="btn primary"
             onClick={async () => {
+              if (!window.openvoice) {
+                return
+              }
               const result = await window.openvoice.installCable()
               setMessage(result.ok ? 'Installer launched. Re-scan devices after it finishes.' : result.error ?? 'Install failed')
               if (result.ok) {
@@ -190,20 +219,30 @@ export function App() {
         </div>
       ) : null}
 
-      {message ? <p className="hint">{message}</p> : null}
+      {message ? <p className="toast">{message}</p> : null}
 
-      <section className="panel">
+      <section className="panel hero">
         <div className="row">
           <button
-            className={`toggle ${status.voiceOn ? 'on' : ''}`}
-            onClick={async () => setStatus(await window.openvoice.setVoice(!status.voiceOn))}
+            className={`btn ${status.voiceOn ? 'primary' : ''}`}
+            onClick={async () => {
+              if (!window.openvoice) {
+                return
+              }
+              setStatus(await window.openvoice.setVoice(!status.voiceOn))
+            }}
           >
             VC {status.voiceOn ? 'On' : 'Off'}
           </button>
           <button
-            className={`toggle ${status.monitorOn ? 'on' : ''}`}
+            className={`btn ${status.monitorOn ? 'primary' : ''}`}
             disabled={!status.voiceOn}
-            onClick={async () => setStatus(await window.openvoice.setMonitor(!status.monitorOn))}
+            onClick={async () => {
+              if (!window.openvoice) {
+                return
+              }
+              setStatus(await window.openvoice.setMonitor(!status.monitorOn))
+            }}
           >
             Monitor {status.monitorOn ? 'On' : 'Off'}
           </button>
@@ -225,6 +264,7 @@ export function App() {
       </section>
 
       <section className="panel">
+        <h2>Route</h2>
         <div className="row">
           <DeviceSelect
             label="Microphone"
@@ -251,65 +291,68 @@ export function App() {
             onChange={(monitorId) => void applyDevices({ monitorId })}
           />
         </div>
-        <p className="hint" style={{ marginTop: 10 }}>
-          Use headphones for monitor. CABLE Output is not offered as a mic (that loop is what causes
-          digital feedback).
+        <p className="hint">
+          Use headphones for monitor. CABLE Output is not offered as a mic, so the output cannot loop back into the input.
         </p>
       </section>
 
       <section className="panel">
+        <h2>Voice</h2>
         <div className="voices">
           {voices.map((v) => (
             <button
               key={v.id}
               className={`voice ${settings.voiceMode === v.id ? 'sel' : ''}`}
-              onClick={() => void patchSettings({ voiceMode: v.id })}
+              onClick={() => void commit({ voiceMode: v.id })}
             >
-              {v.label}
+              <span>{v.label}</span>
+              {v.wip ? <span className="badge">WIP</span> : null}
             </button>
           ))}
         </div>
         {settings.voiceMode === 'pitch' ? (
-          <label className="field" style={{ marginTop: 12 }}>
-            Pitch ({settings.pitchSemitones > 0 ? '+' : ''}
-            {settings.pitchSemitones.toFixed(1)} st)
+          <label className="field">
+            Pitch ({settings.pitchSemitones > 0 ? '+' : ''}{settings.pitchSemitones.toFixed(1)} st)
             <input
               type="range"
               min={-12}
               max={12}
               step={0.5}
               value={settings.pitchSemitones}
-              onChange={(e) => void patchSettings({ pitchSemitones: Number(e.target.value) })}
+              onChange={(e) => void commit({ pitchSemitones: Number(e.target.value) })}
             />
           </label>
         ) : null}
         {settings.voiceMode === 'chords' ? (
-          <div className="row" style={{ marginTop: 12 }}>
-            <label className="field grow">
-              Chord level ({Math.round(settings.harmonyGain * 100)}%)
-              <input
-                type="range"
-                min={0}
-                max={1.5}
-                step={0.01}
-                value={settings.harmonyGain}
-                onChange={(e) => void patchSettings({ harmonyGain: Number(e.target.value) })}
-              />
-            </label>
-            <label className="field grow">
-              Chord hold ({Math.round(settings.chordHoldMs)} ms)
-              <input
-                type="range"
-                min={40}
-                max={220}
-                step={5}
-                value={settings.chordHoldMs}
-                onChange={(e) => void patchSettings({ chordHoldMs: Number(e.target.value) })}
-              />
-            </label>
-          </div>
+          <>
+            <p className="wip-note">Work in progress. The chord code is still here, and it is not finished.</p>
+            <div className="row">
+              <label className="field grow">
+                Chord level ({Math.round(settings.harmonyGain * 100)}%)
+                <input
+                  type="range"
+                  min={0}
+                  max={1.5}
+                  step={0.01}
+                  value={settings.harmonyGain}
+                  onChange={(e) => void commit({ harmonyGain: Number(e.target.value) })}
+                />
+              </label>
+              <label className="field grow">
+                Chord hold ({Math.round(settings.chordHoldMs)} ms)
+                <input
+                  type="range"
+                  min={40}
+                  max={220}
+                  step={5}
+                  value={settings.chordHoldMs}
+                  onChange={(e) => void commit({ chordHoldMs: Number(e.target.value) })}
+                />
+              </label>
+            </div>
+          </>
         ) : null}
-        <div className="row" style={{ marginTop: 12 }}>
+        <div className="row gains">
           <label className="field grow">
             Input gain
             <input
@@ -318,7 +361,7 @@ export function App() {
               max={2}
               step={0.05}
               value={settings.inputGain}
-              onChange={(e) => void patchSettings({ inputGain: Number(e.target.value) })}
+              onChange={(e) => void commit({ inputGain: Number(e.target.value) })}
             />
           </label>
           <label className="field grow">
@@ -329,7 +372,7 @@ export function App() {
               max={2}
               step={0.05}
               value={settings.outputGain}
-              onChange={(e) => void patchSettings({ outputGain: Number(e.target.value) })}
+              onChange={(e) => void commit({ outputGain: Number(e.target.value) })}
             />
           </label>
           <label className="field grow">
@@ -340,40 +383,55 @@ export function App() {
               max={2}
               step={0.05}
               value={settings.padGain}
-              onChange={(e) => void patchSettings({ padGain: Number(e.target.value) })}
+              onChange={(e) => void commit({ padGain: Number(e.target.value) })}
             />
           </label>
         </div>
       </section>
 
       <section className="panel">
-        <div className="row" style={{ marginBottom: 10 }}>
-          <strong>Soundboard</strong>
-          <button className="tiny" onClick={async () => setSettings(await window.openvoice.addPads())}>
+        <div className="section-head">
+          <h2>Soundboard</h2>
+          <button
+            className="btn"
+            onClick={async () => {
+              if (!window.openvoice) {
+                return
+              }
+              setSettings(await window.openvoice.addPads())
+            }}
+          >
             Add clips
           </button>
         </div>
         {settings.pads.length === 0 ? (
-          <p className="empty">No clips yet. Add your own wav/mp3/ogg files.</p>
+          <p className="empty">No clips yet. Add your own wav, mp3, or ogg files.</p>
         ) : (
           <div className="grid">
             {settings.pads.map((pad) => (
-              <div key={pad.id} className="pad">
+              <div key={pad.id} className={`pad ${bindId === pad.id ? 'binding' : ''}`}>
                 <strong>{pad.name}</strong>
-                <div className="meta">{bindId === pad.id ? 'Press a key…' : pad.hotkey || 'No hotkey'}</div>
+                <div className="meta">
+                  {bindId === pad.id ? 'Press a key…' : pad.hotkey ? formatAccelerator(pad.hotkey) : 'No hotkey'}
+                </div>
                 <div className="pad-actions">
-                  <button className="tiny" onClick={() => void window.openvoice.playPad(pad.id)}>
+                  <button className="btn tiny" onClick={() => void window.openvoice?.playPad(pad.id)}>
                     Play
                   </button>
-                  <button className="tiny" onClick={() => void window.openvoice.stopPad(pad.id)}>
+                  <button className="btn tiny" onClick={() => void window.openvoice?.stopPad(pad.id)}>
                     Stop
                   </button>
-                  <button className="tiny" onClick={() => setBindId(pad.id)}>
+                  <button className="btn tiny" onClick={() => setBindId(pad.id)}>
                     Bind
                   </button>
                   <button
-                    className="tiny danger"
-                    onClick={async () => setSettings(await window.openvoice.removePad(pad.id))}
+                    className="btn tiny danger"
+                    onClick={async () => {
+                      if (!window.openvoice) {
+                        return
+                      }
+                      setSettings(await window.openvoice.removePad(pad.id))
+                    }}
                   >
                     Remove
                   </button>
@@ -386,7 +444,7 @@ export function App() {
 
       <p className="update">
         {update.state === 'ready' ? (
-          <button className="tiny" onClick={() => void window.openvoice.installUpdate()}>
+          <button className="btn tiny" onClick={() => void window.openvoice?.installUpdate()}>
             Restart and install {update.version}
           </button>
         ) : (

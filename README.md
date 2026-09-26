@@ -2,6 +2,8 @@
 
 Windows voice changer and soundboard that outputs through [VB-CABLE](https://vb-audio.com/Cable/). Other apps (Discord, games) should use **CABLE Output** as their microphone.
 
+Pitch, Squeaky, Robot, and the soundboard are the stable features. Auto Chords is included and marked as a work in progress.
+
 ## Requirements
 
 - Windows 10/11 x64

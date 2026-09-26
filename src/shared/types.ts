@@ -1,4 +1,5 @@
 export type VoiceMode = 'pitch' | 'squeaky' | 'robot' | 'chords'
+export type ThemeMode = 'light' | 'dark'
 
 export interface AudioDevice {
   id: string
@@ -30,7 +31,13 @@ export interface AppSettings {
   padGain: number
   harmonyGain: number
   chordHoldMs: number
+  theme: ThemeMode
   pads: PadBinding[]
+}
+
+export interface SettingsUpdate {
+  settings: AppSettings
+  warning?: string
 }
 
 export interface AudioStatus {
@@ -64,5 +71,6 @@ export const defaultSettings = (): AppSettings => ({
   padGain: 1,
   harmonyGain: 1,
   chordHoldMs: 90,
+  theme: 'light',
   pads: []
 })

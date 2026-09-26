@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AppSettings, AudioStatus, DeviceLists, Meters, UpdateStatus } from '../shared/types'
+import type { AppSettings, AudioStatus, DeviceLists, Meters, SettingsUpdate, UpdateStatus } from '../shared/types'
 
 const api = {
   listDevices: (): Promise<DeviceLists> => ipcRenderer.invoke('devices:list'),
@@ -8,7 +8,7 @@ const api = {
   setVoice: (on: boolean): Promise<AudioStatus> => ipcRenderer.invoke('audio:setVoice', on),
   setMonitor: (on: boolean): Promise<AudioStatus> => ipcRenderer.invoke('audio:setMonitor', on),
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
-  updateSettings: (patch: Partial<AppSettings>): Promise<AppSettings> =>
+  updateSettings: (patch: Partial<AppSettings>): Promise<SettingsUpdate> =>
     ipcRenderer.invoke('settings:update', patch),
   restartAudio: (ids: { inputId: string; cableId: string; monitorId: string }): Promise<AudioStatus> =>
     ipcRenderer.invoke('audio:restart', ids),
