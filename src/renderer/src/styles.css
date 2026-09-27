@@ -138,6 +138,13 @@ h2 {
   color: var(--muted);
 }
 
+.update {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
 .update-pop {
   position: fixed;
   inset: 0;

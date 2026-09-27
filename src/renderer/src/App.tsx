@@ -491,7 +491,17 @@ export function App() {
         )}
       </section>
 
-      <p className="update">
+      <div className="update">
+        <button
+          className="btn tiny"
+          disabled={update.state === 'checking' || update.state === 'downloading'}
+          onClick={() => {
+            setUpdateDismissed('')
+            void window.openvoice?.checkForUpdates()
+          }}
+        >
+          Check for updates
+        </button>
         {update.state === 'ready' ? (
           <button className="btn tiny" onClick={() => void window.openvoice?.installUpdate()}>
             Restart and install {update.version}
@@ -499,7 +509,7 @@ export function App() {
         ) : (
           <span>{update.message ?? ''}</span>
         )}
-      </p>
+      </div>
     </div>
   )
 }

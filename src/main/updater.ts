@@ -234,6 +234,14 @@ async function checkForUpdates(): Promise<void> {
   }
 }
 
+export function requestUpdateCheck(): void {
+  if (!app.isPackaged) {
+    setStatus({ state: 'idle', message: 'Updates run from an installed build' })
+    return
+  }
+  void checkForUpdates()
+}
+
 export function startAutoUpdater(): void {
   app.on('will-quit', () => {
     if (installerPath && !installing) {

@@ -23,6 +23,7 @@ const api = {
   findCable: (): Promise<{ found: boolean; id: string; name: string }> =>
     ipcRenderer.invoke('cable:find'),
   updateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:status'),
+  checkForUpdates: (): Promise<void> => ipcRenderer.invoke('update:check'),
   installUpdate: (): Promise<void> => ipcRenderer.invoke('update:install'),
   onUpdate: (fn: (status: UpdateStatus) => void): (() => void) => {
     const handler = (_e: unknown, status: UpdateStatus): void => fn(status)

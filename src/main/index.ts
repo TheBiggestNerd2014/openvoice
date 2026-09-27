@@ -5,7 +5,7 @@ import { loadAddon } from './addon'
 import { loadSettings, saveSettings } from './settings'
 import { applyHotkeys, setPlayHandler, stopHotkeys } from './hotkeys'
 import { findBundledInstaller, launchBundledInstaller } from './cable'
-import { startAutoUpdater, getUpdateStatus, onUpdateStatus, quitAndInstall } from './updater'
+import { startAutoUpdater, getUpdateStatus, onUpdateStatus, quitAndInstall, requestUpdateCheck } from './updater'
 import { defaultSettings, type AppSettings, type ThemeMode, type VoiceMode } from '../shared/types'
 
 function appIcon(): string | undefined {
@@ -257,6 +257,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('cable:install', () => launchBundledInstaller())
   ipcMain.handle('cable:find', () => loadAddon().findCable())
   ipcMain.handle('update:status', () => getUpdateStatus())
+  ipcMain.handle('update:check', () => {
+    requestUpdateCheck()
+  })
   ipcMain.handle('update:install', () => {
     quitAndInstall()
   })
