@@ -16,12 +16,15 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - run: npm ci
-      - run: npm run dist
+      # Signing downloads winCodeSign, whose archive contains macOS symlinks.
+      # Windows runners cannot extract those, and this app is not code-signed.
+      # signExecutable still lets electron-builder write the icon and version.
+      - run: npm run dist -- "-c.win.signExecutable=false"
         env:
           OPENVOICE_COMMIT: ${{ github.sha }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
