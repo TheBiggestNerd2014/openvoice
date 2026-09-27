@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
@@ -77,6 +77,23 @@ async function extractZip(zipPath: string, dest: string): Promise<void> {
   await execFileAsync('tar', ['-xf', zipPath, '-C', dest], { windowsHide: true })
 }
 
+function psLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`
+}
+
+async function launchSetup(exe: string): Promise<void> {
+  const dir = dirname(exe)
+  const command = [
+    `Get-ChildItem -LiteralPath ${psLiteral(dir)} -Recurse -File | Unblock-File`,
+    `Start-Process -LiteralPath ${psLiteral(exe)} -WorkingDirectory ${psLiteral(dir)} -Verb RunAs`
+  ].join('; ')
+  await execFileAsync(
+    'powershell.exe',
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command],
+    { windowsHide: true }
+  )
+}
+
 export async function launchBundledInstaller(): Promise<{ ok: boolean; path?: string; error?: string }> {
   const bundled = findBundledInstaller()
   if (!bundled) {
@@ -99,12 +116,11 @@ export async function launchBundledInstaller(): Promise<{ ok: boolean; path?: st
     return { ok: false, path: bundled, error: 'The VB-CABLE package does not contain a setup program.' }
   }
 
-  const child = spawn(exe, [], {
-    cwd: dirname(exe),
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: false
-  })
-  child.unref()
+  try {
+    await launchSetup(exe)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Launch failed'
+    return { ok: false, path: exe, error: `Couldn't start the VB-CABLE setup. ${message}` }
+  }
   return { ok: true, path: exe }
 }
