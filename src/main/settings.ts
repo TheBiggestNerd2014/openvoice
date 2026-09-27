@@ -21,7 +21,9 @@ export function loadSettings(): AppSettings {
       ...parsed,
       harmonyGain,
       theme,
-      pads: Array.isArray(parsed.pads) ? (parsed.pads as PadBinding[]) : []
+      pads: Array.isArray(parsed.pads)
+        ? (parsed.pads as PadBinding[]).map((pad) => ({ ...pad, stopOnRetrigger: Boolean(pad.stopOnRetrigger) }))
+        : []
     }
   } catch {
     return defaults

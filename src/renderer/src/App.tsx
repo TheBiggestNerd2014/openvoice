@@ -456,6 +456,17 @@ export function App() {
                   <button className="btn tiny" onClick={() => void window.openvoice?.playPad(pad.id)}>
                     Play
                   </button>
+                  <button
+                    className={`btn tiny ${pad.stopOnRetrigger ? 'on' : ''}`}
+                    onClick={() => {
+                      const pads = settings.pads.map((item) =>
+                        item.id === pad.id ? { ...item, stopOnRetrigger: !item.stopOnRetrigger } : item
+                      )
+                      void commit({ pads })
+                    }}
+                  >
+                    {pad.stopOnRetrigger ? 'Press stops' : 'Press replays'}
+                  </button>
                   <button className="btn tiny" onClick={() => void window.openvoice?.stopPad(pad.id)}>
                     Stop
                   </button>

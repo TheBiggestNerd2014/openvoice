@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme, shell } from 'electron'
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { loadAddon } from './addon'
@@ -61,6 +61,7 @@ function createWindow(): void {
     }
   })
 
+  mainWindow.setMenu(null)
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
   })
@@ -102,6 +103,7 @@ async function reloadPads(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null)
   settings = loadSettings()
   if (settings.theme !== 'light' && settings.theme !== 'dark') {
     settings.theme = 'light'
@@ -109,7 +111,10 @@ app.whenReady().then(async () => {
 
   try {
     const audio = loadAddon()
-    setPlayHandler((id) => audio.playPad(id))
+    setPlayHandler((id) => {
+      const pad = settings.pads.find((item) => item.id === id)
+      audio.playPad(id, Boolean(pad?.stopOnRetrigger))
+    })
     const hotkeys = applyHotkeys(settings.pads)
     if (hotkeys.changed) {
       settings.pads = hotkeys.pads
@@ -239,7 +244,8 @@ app.whenReady().then(async () => {
     return settings
   })
   ipcMain.handle('pads:play', (_e, id: number) => {
-    loadAddon().playPad(id)
+    const pad = settings.pads.find((item) => item.id === id)
+    loadAddon().playPad(id, Boolean(pad?.stopOnRetrigger))
   })
   ipcMain.handle('pads:stop', (_e, id: number) => {
     loadAddon().stopPad(id)

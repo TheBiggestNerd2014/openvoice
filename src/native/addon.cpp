@@ -163,7 +163,8 @@ Napi::Value UnloadPad(const Napi::CallbackInfo& info) {
 
 Napi::Value PlayPad(const Napi::CallbackInfo& info) {
   if (info.Length() > 0) {
-    Engine::instance().playPad(info[0].ToNumber().Int32Value());
+    const bool stopIfPlaying = info.Length() > 1 && info[1].ToBoolean();
+    Engine::instance().playPad(info[0].ToNumber().Int32Value(), stopIfPlaying);
   }
   return info.Env().Undefined();
 }

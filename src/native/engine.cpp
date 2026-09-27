@@ -511,13 +511,18 @@ void Engine::unloadPad(int id) {
   pads_[id].pcm.clear();
 }
 
-void Engine::playPad(int id) {
+void Engine::playPad(int id, bool stopIfPlaying) {
   if (id < 0 || id >= kMaxPads) {
     return;
   }
-  if (pads_[id].frames.load() > 0) {
-    pads_[id].playPos.store(0);
+  if (pads_[id].frames.load() <= 0) {
+    return;
   }
+  if (stopIfPlaying && pads_[id].playPos.load() >= 0) {
+    pads_[id].playPos.store(-1);
+    return;
+  }
+  pads_[id].playPos.store(0);
 }
 
 void Engine::stopPad(int id) {

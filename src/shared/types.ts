@@ -18,6 +18,7 @@ export interface PadBinding {
   path: string
   hotkey: string
   volume: number
+  stopOnRetrigger?: boolean
 }
 
 export interface AppSettings {

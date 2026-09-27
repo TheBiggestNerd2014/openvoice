@@ -453,6 +453,12 @@ input[type="range"] {
   margin-top: auto;
 }
 
+.btn.tiny.on {
+  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+  color: var(--on-accent);
+  border-color: transparent;
+}
+
 .btn.tiny.danger {
   color: var(--danger);
   border-color: rgba(198, 69, 69, 0.35);

@@ -44,7 +44,7 @@ public:
 
   bool loadPad(int id, const std::string& path, std::string* error);
   void unloadPad(int id);
-  void playPad(int id);
+  void playPad(int id, bool stopIfPlaying);
   void stopPad(int id);
 
   bool findCableOutputId(std::string* id, std::string* name) const;
