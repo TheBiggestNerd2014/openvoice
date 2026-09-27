@@ -1,0 +1,14 @@
+{
+  "commit": "60301b6dad8dbb49bd99db54cce404b1283abf06",
+  "version": "1.0.0",
+  "file": "OpenVoice-Setup-1.0.0.exe",
+  "sha512": "asQxMUMRR4qYdchqTFKZExkgJVKZxa/LeNkQp1Ms6gKIzb+eIrpeA6D3YxJyt3Egf87wt1dkbDBo6RIet2UTJg==",
+  "size": 92974395,
+  "url": "https://github.com/TheBiggestNerd2014/openvoice/raw/updater/OpenVoice-Setup-1.0.0.exe",
+  "changes": [
+    {
+      "title": "Add a button to check for updates on demand.",
+      "detail": "A manual check shows the update window again if a newer build is waiting."
+    }
+  ]
+}
