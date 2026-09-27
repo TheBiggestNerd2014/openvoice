@@ -43,11 +43,6 @@ nsis:
   installerIcon: resources/build/icon.ico
   uninstallerIcon: resources/build/icon.ico
   installerHeaderIcon: resources/build/icon.ico
-publish:
-  provider: github
-  owner: thebiggestnerd2014
-  repo: openvoice
-  releaseType: release
 npmRebuild: false
 electronDownload:
   arch: x64

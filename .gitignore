@@ -10,5 +10,6 @@ Thumbs.db
 .vscode/
 resources/vbcable/*.exe
 resources/vbcable/*.zip
+src/shared/build-info.json
 sounds/*
 !sounds/README.md

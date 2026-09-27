@@ -1,0 +1,46 @@
+name: Publish update
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: openvoice-update
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run dist
+        env:
+          OPENVOICE_COMMIT: ${{ github.sha }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - name: Publish the update feed
+        shell: pwsh
+        env:
+          OPENVOICE_COMMIT: ${{ github.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP "openvoice-updater"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item "dist/OpenVoice-Setup-1.0.0.exe" $stage
+          node scripts/write-update-json.mjs "$stage/OpenVoice-Setup-1.0.0.exe" $stage
+          Push-Location $stage
+          git init
+          git checkout -b updater
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add -A
+          git commit -m "Publish update"
+          git push --force "https://x-access-token:${env:GITHUB_TOKEN}@github.com/${env:GITHUB_REPOSITORY}.git" HEAD:updater
+          Pop-Location

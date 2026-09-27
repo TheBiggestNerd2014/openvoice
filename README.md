@@ -27,6 +27,6 @@ Add your own wav, mp3, or ogg clips. Play a pad from the app, or bind a global h
 
 ## Updates
 
-OpenVoice checks GitHub for updates. It can install one when you quit, or right away from **Restart and install**. Pre-releases are ignored.
+OpenVoice checks for a newer build and can install it when you quit, or right away from **Restart and install**. Releases on GitHub are a separate download.
 
 Licensed under [CC BY-ND 4.0](https://creativecommons.org/licenses/by-nd/4.0/).

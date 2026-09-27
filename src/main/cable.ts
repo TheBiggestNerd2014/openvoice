@@ -85,7 +85,7 @@ async function launchSetup(exe: string): Promise<void> {
   const dir = dirname(exe)
   const command = [
     `Get-ChildItem -LiteralPath ${psLiteral(dir)} -Recurse -File | Unblock-File`,
-    `Start-Process -LiteralPath ${psLiteral(exe)} -WorkingDirectory ${psLiteral(dir)} -Verb RunAs`
+    `Start-Process -FilePath ${psLiteral(exe)} -WorkingDirectory ${psLiteral(dir)} -Verb RunAs`
   ].join('; ')
   await execFileAsync(
     'powershell.exe',
