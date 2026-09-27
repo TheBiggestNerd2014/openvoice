@@ -17,7 +17,7 @@
     "native:build": "node scripts/build-native.mjs",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "dist": "npm run native:build && npm run build && electron-builder --win nsis",
+    "dist": "npm run native:build && npm run build && electron-builder --win nsis --publish never",
     "preview": "electron-vite preview"
   },
   "dependencies": {
