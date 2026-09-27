@@ -68,6 +68,7 @@ export function App() {
   const [bindId, setBindId] = useState<number | null>(null)
   const [message, setMessage] = useState('')
   const [update, setUpdate] = useState<UpdateStatus>({ state: 'idle' })
+  const [updateDismissed, setUpdateDismissed] = useState('')
 
   const refresh = useCallback(async () => {
     if (!window.openvoice) {
@@ -147,6 +148,8 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey, true)
   }, [bindId, settings.pads, commit])
 
+  const updatePending = update.state === 'available' || update.state === 'downloading' || update.state === 'ready'
+  const showUpdate = updatePending && update.version !== updateDismissed
   const cableMissing = !status.cablePresent && Boolean(window.openvoice)
   const micDevices = inputs.filter((d) => !isCableOutput(d.name) && !isLoopback(d.name))
   const monitorDevices = outputs.filter((d) => !isCableInput(d.name))
@@ -175,6 +178,41 @@ export function App() {
 
   return (
     <div className="app">
+      {showUpdate ? (
+        <div className="update-pop" role="dialog" aria-modal="true" aria-labelledby="update-title">
+          <div className="update-card">
+            <p className="update-kicker">New update</p>
+            <h2 id="update-title" className="update-title">
+              {update.state === 'ready' ? 'A new build is ready to install' : 'A new build is on the way'}
+            </h2>
+            <p className="sub">Build {update.version}</p>
+            {update.changes && update.changes.length > 0 ? (
+              <ul className="update-changes">
+                {update.changes.map((change, index) => (
+                  <li key={`${change.title}-${index}`}>
+                    <strong>{change.title}</strong>
+                    {change.detail ? <span>{change.detail}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="sub">Restart after it finishes downloading to install this build.</p>
+            )}
+            <div className="row">
+              <button
+                className="btn primary"
+                disabled={update.state !== 'ready'}
+                onClick={() => void window.openvoice?.installUpdate()}
+              >
+                {update.state === 'ready' ? 'Restart and install' : (update.message ?? 'Downloading…')}
+              </button>
+              <button className="btn" onClick={() => setUpdateDismissed(update.version ?? '')}>
+                Later
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <header className="top">
         <div className="brand">
           <img className="logo" src={logo} alt="" />

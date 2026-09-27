@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import type { IncomingMessage } from 'node:http'
 import { app } from 'electron'
 import buildInfo from '../shared/build-info.json'
-import type { UpdateStatus } from '../shared/types'
+import type { UpdateChange, UpdateStatus } from '../shared/types'
 
 const FEED = 'https://raw.githubusercontent.com/TheBiggestNerd2014/openvoice/updater/update.json'
 
@@ -17,6 +17,7 @@ interface RemoteUpdate {
   sha512: string
   size: number
   url: string
+  changes?: UpdateChange[]
 }
 
 let status: UpdateStatus = { state: 'idle' }
@@ -24,6 +25,7 @@ const listeners = new Set<(next: UpdateStatus) => void>()
 let installerPath: string | null = null
 let installing = false
 let busy = false
+let currentChanges: UpdateChange[] = []
 
 const setStatus = (next: UpdateStatus): void => {
   status = next
@@ -76,6 +78,64 @@ async function readFeed(): Promise<RemoteUpdate> {
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as RemoteUpdate
 }
 
+function asChanges(value: unknown): UpdateChange[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  const changes: UpdateChange[] = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object') {
+      continue
+    }
+    const title = 'title' in item && typeof item.title === 'string' ? item.title.trim() : ''
+    const detail = 'detail' in item && typeof item.detail === 'string' ? item.detail.trim() : ''
+    if (!title) {
+      continue
+    }
+    changes.push(detail ? { title: title.slice(0, 160), detail: detail.slice(0, 400) } : { title: title.slice(0, 160) })
+    if (changes.length >= 12) {
+      break
+    }
+  }
+  return changes
+}
+
+function messageToChange(message: string): UpdateChange | null {
+  const [titleRaw, ...rest] = message.split(/\r?\n/)
+  const title = titleRaw.trim().slice(0, 160)
+  const detail = rest.join('\n').trim().slice(0, 400)
+  if (!title) {
+    return null
+  }
+  return detail ? { title, detail } : { title }
+}
+
+async function changesSince(local: string, remote: string, fallback: UpdateChange[]): Promise<UpdateChange[]> {
+  try {
+    const res = await openUrl(
+      `https://api.github.com/repos/TheBiggestNerd2014/openvoice/compare/${local}...${remote}`
+    )
+    const chunks: Buffer[] = []
+    for await (const chunk of res) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    }
+    if ((res.statusCode ?? 0) < 200 || (res.statusCode ?? 0) >= 300) {
+      return fallback
+    }
+    const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
+      commits?: { commit?: { message?: string } }[]
+    }
+    const changes = (body.commits ?? [])
+      .map((commit) => messageToChange(commit.commit?.message ?? ''))
+      .filter((change): change is UpdateChange => change !== null)
+      .slice(-12)
+      .reverse()
+    return changes.length > 0 ? changes : fallback
+  } catch {
+    return fallback
+  }
+}
+
 function download(update: RemoteUpdate, dest: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const open = (url: string): void => {
@@ -104,7 +164,12 @@ function download(update: RemoteUpdate, dest: string): Promise<string> {
             file.once('drain', () => res.resume())
           }
           const percent = update.size > 0 ? Math.min(100, Math.round((received / update.size) * 100)) : 0
-          setStatus({ state: 'downloading', message: `Downloading update… ${percent}%` })
+          setStatus({
+            state: 'downloading',
+            version: update.commit.slice(0, 7),
+            message: `Downloading update… ${percent}%`,
+            changes: currentChanges
+          })
         })
         res.on('error', reject)
         res.on('end', () => {
@@ -139,13 +204,20 @@ async function checkForUpdates(): Promise<void> {
       return
     }
     const label = remote.commit.slice(0, 7)
-    setStatus({ state: 'available', version: label, message: 'A newer build is available' })
+    currentChanges = await changesSince(local, remote.commit.trim(), asChanges(remote.changes))
+    setStatus({
+      state: 'available',
+      version: label,
+      message: 'A newer build is available',
+      changes: currentChanges
+    })
     const dest = join(app.getPath('temp'), 'OpenVoice-Setup-1.0.0.exe')
     installerPath = await download(remote, dest)
     setStatus({
       state: 'ready',
       version: label,
-      message: 'Update ready. Restart to install.'
+      message: 'Update ready. Restart to install.',
+      changes: currentChanges
     })
   } catch (err) {
     const raw = err instanceof Error ? err.message : 'Update check failed'

@@ -54,10 +54,16 @@ export interface Meters {
 
 export type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'current' | 'error'
 
+export interface UpdateChange {
+  title: string
+  detail?: string
+}
+
 export interface UpdateStatus {
   state: UpdateState
   version?: string
   message?: string
+  changes?: UpdateChange[]
 }
 
 export const defaultSettings = (): AppSettings => ({

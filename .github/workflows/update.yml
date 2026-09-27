@@ -17,6 +17,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -37,6 +39,23 @@ jobs:
           $stage = Join-Path $env:RUNNER_TEMP "openvoice-updater"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item "dist/OpenVoice-Setup-1.0.0.exe" $stage
+          $prev = ""
+          try {
+            $feed = Invoke-RestMethod -Headers @{
+              Authorization = "Bearer $($env:GITHUB_TOKEN)"
+              "User-Agent" = "OpenVoice"
+              Accept = "application/vnd.github.raw"
+            } -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/contents/update.json?ref=updater"
+            if ($feed.commit) { $prev = [string]$feed.commit }
+          } catch {
+            $prev = ""
+          }
+          $range = @("-1")
+          if ($prev) {
+            git rev-parse --verify --quiet "$prev^{commit}" | Out-Null
+            if ($LASTEXITCODE -eq 0) { $range = @("$prev..HEAD") }
+          }
+          $env:OPENVOICE_CHANGES = @(git log @range --format="%s%x1f%b%x1e") -join "`n"
           node scripts/write-update-json.mjs "$stage/OpenVoice-Setup-1.0.0.exe" $stage
           Push-Location $stage
           git init
