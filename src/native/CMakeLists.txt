@@ -31,6 +31,7 @@ add_library(${PROJECT_NAME} SHARED
   addon.cpp
   engine.cpp
   dsp.cpp
+  hotkeys.cpp
   miniaudio_impl.c
   ${CMAKE_JS_SRC}
 )
@@ -54,7 +55,7 @@ if(MSVC)
     $<$<COMPILE_LANGUAGE:CXX>:/utf-8 /W3 /EHsc>
     $<$<COMPILE_LANGUAGE:C>:/utf-8 /W3>
   )
-  target_link_libraries(${PROJECT_NAME} PRIVATE ${CMAKE_JS_LIB} ole32 uuid)
+  target_link_libraries(${PROJECT_NAME} PRIVATE ${CMAKE_JS_LIB} ole32 uuid user32)
 else()
   target_link_libraries(${PROJECT_NAME} PRIVATE ${CMAKE_JS_LIB})
 endif()

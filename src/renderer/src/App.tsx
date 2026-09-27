@@ -136,7 +136,7 @@ export function App() {
       }
       const accel = acceleratorFromEvent(e)
       if (!accel) {
-        setMessage('That key can’t be a global hotkey. Try arrows, letters, space, or the numpad.')
+        setMessage('That key can’t be a global hotkey. Left and right Ctrl, Shift, Alt, Page Up, and Page Down can.')
         return
       }
       const pads = settings.pads.map((p) => (p.id === bindId ? { ...p, hotkey: accel } : p))

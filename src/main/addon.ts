@@ -24,6 +24,10 @@ interface NativeAddon {
   unloadPad(id: number): void
   playPad(id: number): void
   stopPad(id: number): void
+  setHotkeyCallback(fn: (id: number) => void): void
+  registerHotkey(id: number, mods: number, vk: number): boolean
+  clearHotkeys(): void
+  stopHotkeys(): void
 }
 
 let cached: NativeAddon | null = null

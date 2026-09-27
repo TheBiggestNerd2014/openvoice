@@ -63,7 +63,20 @@ const CODE_KEYS: Record<string, string> = {
   MediaTrackPrevious: 'MediaPreviousTrack',
   MediaPlayPause: 'MediaPlayPause',
   MediaStop: 'MediaStop',
-  PrintScreen: 'PrintScreen'
+  PrintScreen: 'PrintScreen',
+  Pause: 'Pause',
+  ContextMenu: 'Apps'
+}
+
+const SIDE_KEYS: Record<string, string> = {
+  ControlLeft: 'LCtrl',
+  ControlRight: 'RCtrl',
+  ShiftLeft: 'LShift',
+  ShiftRight: 'RShift',
+  AltLeft: 'LAlt',
+  AltRight: 'RAlt',
+  MetaLeft: 'LWin',
+  MetaRight: 'RWin'
 }
 
 const SUPPORTED = new Set([
@@ -72,7 +85,8 @@ const SUPPORTED = new Set([
   ...'F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12 F13 F14 F15 F16 F17 F18 F19 F20 F21 F22 F23 F24'.split(' '),
   ')', '!', '@', '#', '$', '%', '^', '&', '*', '(', ':', ';', '+', '=', '<', ',', '_', '-', '>', '.', '?', '/', '~', '`', '{', ']', '[', '|', '\\', '}', '"', "'",
   'Plus', 'Space', 'Tab', 'Capslock', 'Numlock', 'Scrolllock', 'Backspace', 'Delete', 'Insert', 'Return', 'Enter',
-  'Up', 'Down', 'Left', 'Right', 'Home', 'End', 'PageUp', 'PageDown', 'Escape', 'Esc', 'PrintScreen',
+  'Up', 'Down', 'Left', 'Right', 'Home', 'End', 'PageUp', 'PageDown', 'Escape', 'Esc', 'PrintScreen', 'Pause', 'Apps',
+  'LCtrl', 'RCtrl', 'LShift', 'RShift', 'LAlt', 'RAlt', 'LWin', 'RWin',
   'VolumeUp', 'VolumeDown', 'VolumeMute', 'MediaNextTrack', 'MediaPreviousTrack', 'MediaStop', 'MediaPlayPause',
   'numdec', 'numadd', 'numsub', 'nummult', 'numdiv',
   'num0', 'num1', 'num2', 'num3', 'num4', 'num5', 'num6', 'num7', 'num8', 'num9'
@@ -99,7 +113,32 @@ const ALIASES: Record<string, string> = {
   mediatrackprevious: 'MediaPreviousTrack',
   mediaplaypause: 'MediaPlayPause',
   mediastop: 'MediaStop',
-  printscreen: 'PrintScreen'
+  printscreen: 'PrintScreen',
+  pause: 'Pause',
+  apps: 'Apps',
+  contextmenu: 'Apps',
+  lctrl: 'LCtrl',
+  leftctrl: 'LCtrl',
+  leftcontrol: 'LCtrl',
+  rctrl: 'RCtrl',
+  rightctrl: 'RCtrl',
+  rightcontrol: 'RCtrl',
+  lshift: 'LShift',
+  leftshift: 'LShift',
+  rshift: 'RShift',
+  rightshift: 'RShift',
+  lalt: 'LAlt',
+  leftalt: 'LAlt',
+  ralt: 'RAlt',
+  rightalt: 'RAlt',
+  lwin: 'LWin',
+  leftwin: 'LWin',
+  rwin: 'RWin',
+  rightwin: 'RWin',
+  pgup: 'PageUp',
+  pgdn: 'PageDown',
+  pageup: 'PageUp',
+  pagedown: 'PageDown'
 }
 
 const LABELS: Record<string, string> = {
@@ -137,7 +176,17 @@ const LABELS: Record<string, string> = {
   num6: 'Num 6',
   num7: 'Num 7',
   num8: 'Num 8',
-  num9: 'Num 9'
+  num9: 'Num 9',
+  LCtrl: 'Left Ctrl',
+  RCtrl: 'Right Ctrl',
+  LShift: 'Left Shift',
+  RShift: 'Right Shift',
+  LAlt: 'Left Alt',
+  RAlt: 'Right Alt',
+  LWin: 'Left Win',
+  RWin: 'Right Win',
+  Pause: 'Pause',
+  Apps: 'Menu'
 }
 
 function canonicalKey(raw: string): string | null {
@@ -152,8 +201,29 @@ function canonicalKey(raw: string): string | null {
   return match ?? null
 }
 
+function sideAccelerator(event: KeyInput, side: string): string {
+  const ownCtrl = side === 'LCtrl' || side === 'RCtrl'
+  const ownShift = side === 'LShift' || side === 'RShift'
+  const ownAlt = side === 'LAlt' || side === 'RAlt'
+  const ownMeta = side === 'LWin' || side === 'RWin'
+  const parts: string[] = []
+  if (event.ctrlKey && !ownCtrl) parts.push('Control')
+  if (event.altKey && !ownAlt) parts.push('Alt')
+  if (event.shiftKey && !ownShift) parts.push('Shift')
+  if (event.metaKey && !ownMeta) parts.push('Super')
+  parts.push(side)
+  return parts.join('+')
+}
+
 export function acceleratorFromEvent(event: KeyInput): string | null {
-  if (event.repeat || MODIFIERS.has(event.key)) {
+  if (event.repeat) {
+    return null
+  }
+  const side = SIDE_KEYS[event.code]
+  if (side) {
+    return sideAccelerator(event, side)
+  }
+  if (MODIFIERS.has(event.key)) {
     return null
   }
 
@@ -221,4 +291,119 @@ export function formatAccelerator(accelerator: string): string {
     .split('+')
     .map((part) => LABELS[part] ?? part)
     .join(' + ')
+}
+
+const MOD_ALT = 0x0001
+const MOD_CONTROL = 0x0002
+const MOD_SHIFT = 0x0004
+const MOD_WIN = 0x0008
+
+const SIDE_HOTKEYS = new Set(['LCtrl', 'RCtrl', 'LShift', 'RShift', 'LAlt', 'RAlt', 'LWin', 'RWin'])
+
+const NATIVE_PREFERRED = new Set([
+  ...SIDE_HOTKEYS,
+  'PageUp',
+  'PageDown',
+  'Pause',
+  'Apps',
+  'PrintScreen',
+  'Home',
+  'End',
+  'Insert'
+])
+
+const VK: Record<string, number> = {
+  LCtrl: 0xa2,
+  RCtrl: 0xa3,
+  LShift: 0xa0,
+  RShift: 0xa1,
+  LAlt: 0xa4,
+  RAlt: 0xa5,
+  LWin: 0x5b,
+  RWin: 0x5c,
+  PageUp: 0x21,
+  PageDown: 0x22,
+  Home: 0x24,
+  End: 0x23,
+  Insert: 0x2d,
+  Pause: 0x13,
+  Apps: 0x5d,
+  PrintScreen: 0x2c,
+  Up: 0x26,
+  Down: 0x28,
+  Left: 0x25,
+  Right: 0x27,
+  Space: 0x20,
+  Tab: 0x09,
+  Enter: 0x0d,
+  Escape: 0x1b,
+  Backspace: 0x08,
+  Delete: 0x2e,
+  Capslock: 0x14,
+  Numlock: 0x90,
+  Scrolllock: 0x91,
+  VolumeMute: 0xad,
+  VolumeDown: 0xae,
+  VolumeUp: 0xaf,
+  MediaNextTrack: 0xb0,
+  MediaPreviousTrack: 0xb1,
+  MediaStop: 0xb2,
+  MediaPlayPause: 0xb3,
+  num0: 0x60,
+  num1: 0x61,
+  num2: 0x62,
+  num3: 0x63,
+  num4: 0x64,
+  num5: 0x65,
+  num6: 0x66,
+  num7: 0x67,
+  num8: 0x68,
+  num9: 0x69,
+  nummult: 0x6a,
+  numadd: 0x6b,
+  numsub: 0x6d,
+  numdec: 0x6e,
+  numdiv: 0x6f
+}
+
+function virtualKey(key: string): number | null {
+  if (VK[key] != null) {
+    return VK[key]
+  }
+  if (/^[A-Z]$/.test(key)) {
+    return key.charCodeAt(0)
+  }
+  if (/^[0-9]$/.test(key)) {
+    return key.charCodeAt(0)
+  }
+  const fn = /^F(\d+)$/.exec(key)
+  if (fn) {
+    const n = Number(fn[1])
+    if (n >= 1 && n <= 24) {
+      return 0x70 + n - 1
+    }
+  }
+  return null
+}
+
+export function prefersNativeHotkey(accelerator: string): boolean {
+  return NATIVE_PREFERRED.has(accelerator.split('+').at(-1) ?? '')
+}
+
+export function nativeHotkeySpec(accelerator: string): { mods: number; vk: number } | null {
+  const parts = accelerator.split('+')
+  const key = parts.at(-1) ?? ''
+  const vk = virtualKey(key)
+  if (vk == null) {
+    return null
+  }
+  let mods = 0
+  for (const part of parts.slice(0, -1)) {
+    if (part === 'Control') mods |= MOD_CONTROL
+    else if (part === 'Alt') mods |= MOD_ALT
+    else if (part === 'Shift') mods |= MOD_SHIFT
+    else if (part === 'Super') mods |= MOD_WIN
+    else return null
+  }
+  return { mods, vk }
 }

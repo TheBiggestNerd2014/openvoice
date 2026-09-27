@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { loadAddon } from './addon'
 import { loadSettings, saveSettings } from './settings'
-import { applyHotkeys, clearHotkeys, setPlayHandler } from './hotkeys'
+import { applyHotkeys, setPlayHandler, stopHotkeys } from './hotkeys'
 import { findBundledInstaller, launchBundledInstaller } from './cable'
 import { startAutoUpdater, getUpdateStatus, onUpdateStatus, quitAndInstall } from './updater'
 import { defaultSettings, type AppSettings, type ThemeMode, type VoiceMode } from '../shared/types'
@@ -271,7 +271,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('will-quit', () => {
-  clearHotkeys()
+  stopHotkeys()
   try {
     loadAddon().stop()
   } catch {

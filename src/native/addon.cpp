@@ -1,4 +1,5 @@
 #include "engine.h"
+#include "hotkeys.h"
 
 #include <napi.h>
 
@@ -174,6 +175,37 @@ Napi::Value StopPad(const Napi::CallbackInfo& info) {
   return info.Env().Undefined();
 }
 
+Napi::Value SetHotkeyCallbackExport(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 1 || !info[0].IsFunction()) {
+    Napi::TypeError::New(env, "Expected a function").ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  SetHotkeyCallback(env, info[0].As<Napi::Function>());
+  return env.Undefined();
+}
+
+Napi::Value RegisterHotkeyExport(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 3) {
+    return Napi::Boolean::New(env, false);
+  }
+  const int id = info[0].ToNumber().Int32Value();
+  const unsigned mods = info[1].ToNumber().Uint32Value();
+  const unsigned vk = info[2].ToNumber().Uint32Value();
+  return Napi::Boolean::New(env, RegisterNativeHotkey(id, mods, vk));
+}
+
+Napi::Value ClearHotkeysExport(const Napi::CallbackInfo& info) {
+  ClearNativeHotkeys();
+  return info.Env().Undefined();
+}
+
+Napi::Value StopHotkeysExport(const Napi::CallbackInfo& info) {
+  StopNativeHotkeys();
+  return info.Env().Undefined();
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("listDevices", Napi::Function::New(env, ListDevices));
   exports.Set("start", Napi::Function::New(env, Start));
@@ -194,6 +226,10 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("unloadPad", Napi::Function::New(env, UnloadPad));
   exports.Set("playPad", Napi::Function::New(env, PlayPad));
   exports.Set("stopPad", Napi::Function::New(env, StopPad));
+  exports.Set("setHotkeyCallback", Napi::Function::New(env, SetHotkeyCallbackExport));
+  exports.Set("registerHotkey", Napi::Function::New(env, RegisterHotkeyExport));
+  exports.Set("clearHotkeys", Napi::Function::New(env, ClearHotkeysExport));
+  exports.Set("stopHotkeys", Napi::Function::New(env, StopHotkeysExport));
   return exports;
 }
 
