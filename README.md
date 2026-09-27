@@ -4,7 +4,8 @@ OpenVoice is a Windows voice changer and soundboard. Your microphone goes throug
 
 ## Install
 
-Download **OpenVoice-Setup** from the [releases](https://github.com/TheBiggestNerd2014/openvoice/releases) page and run it.
+Please Download **OpenVoice-Setup** from the [releases](https://github.com/TheBiggestNerd2014/openvoice/releases) page and run it. This is only required once unless the updating functionality is broken. [see below](https://github.com/TheBiggestNerd2014/openvoice/README.md/##updates)
+Run the installer, select your install path, and open the application. From then on, every commit is automatically installed.
 
 ## VB-CABLE
 
