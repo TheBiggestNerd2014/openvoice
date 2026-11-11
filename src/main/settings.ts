@@ -21,6 +21,7 @@ export function loadSettings(): AppSettings {
       ...parsed,
       harmonyGain,
       theme,
+      monitorSoundboardOnly: Boolean(parsed.monitorSoundboardOnly),
       pads: Array.isArray(parsed.pads)
         ? (parsed.pads as PadBinding[]).map((pad) => ({ ...pad, stopOnRetrigger: Boolean(pad.stopOnRetrigger) }))
         : []

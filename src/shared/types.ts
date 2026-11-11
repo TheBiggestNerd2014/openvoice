@@ -33,6 +33,7 @@ export interface AppSettings {
   harmonyGain: number
   chordHoldMs: number
   theme: ThemeMode
+  monitorSoundboardOnly: boolean
   pads: PadBinding[]
 }
 
@@ -79,5 +80,6 @@ export const defaultSettings = (): AppSettings => ({
   harmonyGain: 1,
   chordHoldMs: 90,
   theme: 'light',
+  monitorSoundboardOnly: false,
   pads: []
 })

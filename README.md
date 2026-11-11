@@ -13,7 +13,7 @@ OpenVoice plays into **CABLE Input**. In Discord or a game, set the microphone t
 
 If VB-CABLE is not installed, choose **Install VB-CABLE** in OpenVoice and follow the setup. Restart any app that was already using the microphone.
 
-Use headphones if you turn on the monitor. Speakers can send the changed voice back into the mic.
+Use headphones if you turn on the monitor. Soundboard only plays clips in the headphones and leaves your voice on CABLE. Speakers can send the changed voice back into the mic.
 
 ## Voices
 

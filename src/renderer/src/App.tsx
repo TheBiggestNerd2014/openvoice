@@ -274,7 +274,7 @@ export function App() {
           </button>
           <button
             className={`btn ${status.monitorOn ? 'primary' : ''}`}
-            disabled={!status.voiceOn}
+            disabled={!status.voiceOn && !settings.monitorSoundboardOnly}
             onClick={async () => {
               if (!window.openvoice) {
                 return
@@ -283,6 +283,12 @@ export function App() {
             }}
           >
             Monitor {status.monitorOn ? 'On' : 'Off'}
+          </button>
+          <button
+            className={`btn ${settings.monitorSoundboardOnly ? 'primary' : ''}`}
+            onClick={() => void commit({ monitorSoundboardOnly: !settings.monitorSoundboardOnly })}
+          >
+            Soundboard only
           </button>
           <div className="meters grow">
             <div>
@@ -330,7 +336,7 @@ export function App() {
           />
         </div>
         <p className="hint">
-          Use headphones for monitor. CABLE Output is not offered as a mic, so the output cannot loop back into the input.
+          Use headphones for monitor. Soundboard only plays clips in the headphones and leaves your voice on CABLE. CABLE Output is not offered as a mic, so the output cannot loop back into the input.
         </p>
       </section>
 

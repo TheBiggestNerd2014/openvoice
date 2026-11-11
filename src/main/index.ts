@@ -85,6 +85,7 @@ function pushAudioParams(): void {
   audio.setInputGain(settings.inputGain)
   audio.setOutputGain(settings.outputGain)
   audio.setPadGain(settings.padGain)
+  audio.setMonitorPadsOnly(Boolean(settings.monitorSoundboardOnly))
   audio.setHarmonyGain(settings.harmonyGain)
   audio.setChordHoldMs(settings.chordHoldMs)
 }
@@ -154,7 +155,7 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('audio:setVoice', (_e, on: boolean) => {
     loadAddon().setVoiceEnabled(on)
-    if (!on) {
+    if (!on && !settings.monitorSoundboardOnly) {
       loadAddon().setMonitorEnabled(false)
     }
     return loadAddon().status()

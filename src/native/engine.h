@@ -31,6 +31,7 @@ public:
 
   void setVoiceEnabled(bool on);
   void setMonitorEnabled(bool on);
+  void setMonitorPadsOnly(bool on);
   void setMode(int mode);
   void setPitchSemitones(float semis);
   void setInputGain(float g);
@@ -41,6 +42,7 @@ public:
   void getMeters(float* input, float* output) const;
   bool voiceEnabled() const;
   bool monitorEnabled() const;
+  bool monitorPadsOnly() const;
 
   bool loadPad(int id, const std::string& path, std::string* error);
   void unloadPad(int id);
@@ -139,6 +141,7 @@ private:
   std::atomic<bool> running_{false};
   std::atomic<bool> voiceOn_{false};
   std::atomic<bool> monitorOn_{false};
+  std::atomic<bool> monitorPadsOnly_{false};
   std::atomic<bool> cableUp_{false};
   std::atomic<float> inputGain_{1.f};
   std::atomic<float> outputGain_{1.f};

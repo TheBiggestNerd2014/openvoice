@@ -12,6 +12,7 @@ interface NativeAddon {
   findCable(): { found: boolean; id: string; name: string }
   setVoiceEnabled(on: boolean): void
   setMonitorEnabled(on: boolean): void
+  setMonitorPadsOnly(on: boolean): void
   setMode(mode: number): void
   setPitchSemitones(semis: number): void
   setInputGain(g: number): void

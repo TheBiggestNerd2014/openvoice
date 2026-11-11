@@ -81,6 +81,13 @@ Napi::Value SetMonitorEnabled(const Napi::CallbackInfo& info) {
   return info.Env().Undefined();
 }
 
+Napi::Value SetMonitorPadsOnly(const Napi::CallbackInfo& info) {
+  if (info.Length() > 0) {
+    Engine::instance().setMonitorPadsOnly(info[0].ToBoolean());
+  }
+  return info.Env().Undefined();
+}
+
 Napi::Value SetMode(const Napi::CallbackInfo& info) {
   if (info.Length() > 0) {
     Engine::instance().setMode(info[0].ToNumber().Int32Value());
@@ -215,6 +222,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("findCable", Napi::Function::New(env, FindCable));
   exports.Set("setVoiceEnabled", Napi::Function::New(env, SetVoiceEnabled));
   exports.Set("setMonitorEnabled", Napi::Function::New(env, SetMonitorEnabled));
+  exports.Set("setMonitorPadsOnly", Napi::Function::New(env, SetMonitorPadsOnly));
   exports.Set("setMode", Napi::Function::New(env, SetMode));
   exports.Set("setPitchSemitones", Napi::Function::New(env, SetPitch));
   exports.Set("setInputGain", Napi::Function::New(env, SetInputGain));

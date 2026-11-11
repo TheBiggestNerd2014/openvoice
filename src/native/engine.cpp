@@ -9,6 +9,16 @@
 
 namespace {
 
+float softLimit(float sample) {
+  const float a = std::fabs(sample);
+  if (a <= 0.75f) {
+    return sample;
+  }
+  const float over = a - 0.75f;
+  const float soft = 0.75f + over / (1.f + over * 1.6f);
+  return std::copysign(std::min(soft, 0.98f), sample);
+}
+
 std::string toLower(std::string s) {
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   return s;
@@ -396,17 +406,28 @@ void Engine::stop() {
 
 void Engine::setVoiceEnabled(bool on) {
   voiceOn_.store(on);
-  if (!on) {
+  if (!on && !monitorPadsOnly_.load()) {
     monitorOn_.store(false);
   }
 }
 
 void Engine::setMonitorEnabled(bool on) {
-  if (!voiceOn_.load()) {
+  if (!voiceOn_.load() && !monitorPadsOnly_.load()) {
     monitorOn_.store(false);
     return;
   }
   monitorOn_.store(on);
+}
+
+void Engine::setMonitorPadsOnly(bool on) {
+  monitorPadsOnly_.store(on);
+  if (!on && !voiceOn_.load()) {
+    monitorOn_.store(false);
+  }
+}
+
+bool Engine::monitorPadsOnly() const {
+  return monitorPadsOnly_.load();
 }
 
 void Engine::setMode(int mode) {
@@ -625,7 +646,8 @@ void Engine::onCapture(const float* input, unsigned frameCount, unsigned channel
   float inPeak = 0;
   float outPeak = 0;
   const bool voiceOn = voiceOn_.load();
-  const bool monitorOn = voiceOn && monitorOn_.load();
+  const bool padsOnly = monitorPadsOnly_.load();
+  const bool monitorOn = monitorOn_.load() && (voiceOn || padsOnly);
   const float inG = inputGain_.load();
   const float outG = outputGain_.load();
   const float padG = padGain_.load();
@@ -652,18 +674,13 @@ void Engine::onCapture(const float* input, unsigned frameCount, unsigned channel
       pads_[p].playPos.store(pos >= n ? -1 : pos, std::memory_order_relaxed);
     }
 
-    float mix = (voice + pads * padG) * outG * 6.f;
-    const float a = std::fabs(mix);
-    if (a > 0.75f) {
-      const float over = a - 0.75f;
-      const float soft = 0.75f + over / (1.f + over * 1.6f);
-      mix = std::copysign(std::min(soft, 0.98f), mix);
-    }
+    float mix = softLimit((voice + pads * padG) * outG * 6.f);
+    const float monitorSample = padsOnly ? softLimit(pads * padG * outG * 6.f) : mix;
     outPeak = std::max(outPeak, std::fabs(mix));
 
     rememberOutput(mix);
     cableRing_.writeSample(mix);
-    monitorRing_.writeSample(monitorOn ? mix : 0.f);
+    monitorRing_.writeSample(monitorOn ? monitorSample : 0.f);
   }
 
   updateFeedbackLag();
