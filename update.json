@@ -1,0 +1,13 @@
+{
+  "commit": "319dd5799461cadd1e9daf976be0f9f597a84ac0",
+  "version": "1.1.0",
+  "file": "OpenVoice-Setup-1.1.0.exe",
+  "sha512": "PCtkpeYkGdbLOQi+/kIOBupaWuJ1jXKsVBjNPpj17FbLgGkhRQ1bw512xtFI1Ykd15Jy2SzbnvxKhKQWMIrtYA==",
+  "size": 92974446,
+  "url": "https://github.com/TheBiggestNerd2014/openvoice/raw/updater/OpenVoice-Setup-1.1.0.exe",
+  "changes": [
+    {
+      "title": "Bump OpenVoice to 1.1.0."
+    }
+  ]
+}
