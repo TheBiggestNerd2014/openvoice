@@ -38,7 +38,9 @@ jobs:
         run: |
           $stage = Join-Path $env:RUNNER_TEMP "openvoice-updater"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item "dist/OpenVoice-Setup-1.0.0.exe" $stage
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $exe = "OpenVoice-Setup-$version.exe"
+          Copy-Item "dist/$exe" $stage
           $prev = ""
           try {
             $feed = Invoke-RestMethod -Headers @{
@@ -56,7 +58,7 @@ jobs:
             if ($LASTEXITCODE -eq 0) { $range = @("$prev..HEAD") }
           }
           $env:OPENVOICE_CHANGES = @(git log @range --format="%s%x1f%b%x1e") -join "`n"
-          node scripts/write-update-json.mjs "$stage/OpenVoice-Setup-1.0.0.exe" $stage
+          node scripts/write-update-json.mjs "$stage/$exe" $stage
           Push-Location $stage
           git init
           git checkout -b updater

@@ -200,7 +200,7 @@ async function checkForUpdates(): Promise<void> {
     const remote = await readFeed()
     const local = buildInfo.commit.trim().toLowerCase()
     if (!remote.commit || remote.commit.trim().toLowerCase() === local) {
-      setStatus({ state: 'current', version: '1.0', message: 'Up to date' })
+      setStatus({ state: 'current', version: app.getVersion(), message: 'Up to date' })
       return
     }
     const label = remote.commit.slice(0, 7)
@@ -211,7 +211,7 @@ async function checkForUpdates(): Promise<void> {
       message: 'A newer build is available',
       changes: currentChanges
     })
-    const dest = join(app.getPath('temp'), 'OpenVoice-Setup-1.0.0.exe')
+    const dest = join(app.getPath('temp'), `OpenVoice-Setup-${app.getVersion()}.exe`)
     installerPath = await download(remote, dest)
     setStatus({
       state: 'ready',

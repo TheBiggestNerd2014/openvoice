@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto'
 import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 
+const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+
 const exe = process.argv[2]
 const outDir = process.argv[3]
 const commit = process.env.OPENVOICE_COMMIT?.trim()
@@ -29,7 +31,7 @@ const file = basename(exe)
 const data = readFileSync(exe)
 const update = {
   commit,
-  version: '1.0.0',
+  version,
   file,
   sha512: createHash('sha512').update(data).digest('base64'),
   size: statSync(exe).size,
